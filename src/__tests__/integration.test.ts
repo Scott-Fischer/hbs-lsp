@@ -165,6 +165,7 @@ describe('LSP Integration', () => {
           enableFormatting: true,
           helpers: ['if', 'each', 'with', 'unless', 'helperA'],
           partials: ['foo', 'bar'],
+          maxFullAnalysisChars: 250000,
         },
       }),
     );
@@ -418,8 +419,7 @@ describe('LSP Integration', () => {
 
   it('returns hover for inline partial declarations and invocations', async () => {
     const uri = 'file:///tmp/hbs-lsp-test/example-inline-hover.hbs';
-    const text =
-      '{{#*inline "example"}}x{{/inline}}\n{{> example}}';
+    const text = '{{#*inline "example"}}x{{/inline}}\n{{> example}}';
 
     connection.sendNotification('textDocument/didOpen', {
       textDocument: {
@@ -448,11 +448,15 @@ describe('LSP Integration', () => {
     );
 
     const declarationContent =
-      declarationHover && typeof declarationHover.contents !== 'string' && 'value' in declarationHover.contents
+      declarationHover &&
+      typeof declarationHover.contents !== 'string' &&
+      'value' in declarationHover.contents
         ? declarationHover.contents.value
         : '';
     const invocationContent =
-      invocationHover && typeof invocationHover.contents !== 'string' && 'value' in invocationHover.contents
+      invocationHover &&
+      typeof invocationHover.contents !== 'string' &&
+      'value' in invocationHover.contents
         ? invocationHover.contents.value
         : '';
 
@@ -517,9 +521,7 @@ describe('LSP Integration', () => {
     );
 
     expect(result).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ targetUri: uri }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ targetUri: uri })]),
     );
   });
 
@@ -596,11 +598,7 @@ describe('LSP Integration', () => {
   it('labels inline partial blocks in document symbols', async () => {
     const uri = 'file:///tmp/hbs-lsp-test/example-inline-symbols.hbs';
 
-    openDocument(
-      connection,
-      uri,
-      '{{#*inline "example"}}\n  x\n{{/inline}}',
-    );
+    openDocument(connection, uri, '{{#*inline "example"}}\n  x\n{{/inline}}');
 
     await new Promise((r) => setTimeout(r, 100));
 
@@ -867,25 +865,104 @@ describe('LSP Integration', () => {
     ).toBe(true);
   });
 
-  it('returns workspace index via handlebars/index', async () => {
-    const result = await connection.sendRequest<{
+  it('returns a redacted workspace index with refresh stats via handlebars/index', async () => {
+    const partialPath = path.join(tmpRoot, 'partials', 'index-check.hbs');
+    await mkdir(path.dirname(partialPath), { recursive: true });
+    await writeFile(partialPath, '<div>Index</div>', 'utf8');
+
+    const reindexed = await connection.sendRequest<{
       helpers: string[];
       partials: string[];
       roots: string[];
-    }>('handlebars/index');
+      partialSources: Record<
+        string,
+        Array<{ filePath?: string; rootPath?: string; kind: string }>
+      >;
+      stats: {
+        filesDiscovered: number;
+        templateFiles: number;
+        sourceFilesRead: number;
+        filesSkippedTooLarge: number;
+        scanStoppedDueToLimits: boolean;
+        durationMs: number;
+        limits: {
+          maxSourceScanBytes: number;
+          maxWorkspaceFiles: number;
+          maxWalkDepth: number;
+        };
+      } | null;
+    }>('handlebars/reindex');
+
+    const result =
+      await connection.sendRequest<typeof reindexed>('handlebars/index');
 
     expect(result).toBeDefined();
     expect(Array.isArray(result.helpers)).toBe(true);
     expect(Array.isArray(result.partials)).toBe(true);
     expect(Array.isArray(result.roots)).toBe(true);
+    expect(result.roots).toEqual(['workspace:1']);
 
     expect(result.helpers).toEqual(
       expect.arrayContaining(['if', 'each', 'with']),
     );
-    expect(Array.isArray(result.partials)).toBe(true);
+    expect(result.partials).toEqual(expect.arrayContaining(['index-check']));
+    expect(result.partialSources['index-check']).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          filePath: 'workspace:1/partials/index-check.hbs',
+        }),
+      ]),
+    );
+    expect(result.stats).not.toBeNull();
+    expect(result.stats?.filesDiscovered).toBeGreaterThan(0);
+    expect(result.stats?.templateFiles).toBeGreaterThan(0);
+    expect(result.stats?.durationMs).toBeGreaterThanOrEqual(0);
+    expect(result.stats?.limits.maxWalkDepth).toBe(32);
   });
 
   // ── didChange ─────────────────────────────────────────────
+
+  it('limits full analysis for large documents when configured', async () => {
+    const limitedServer = startServer();
+    const limitedConnection = limitedServer.connection;
+    const limitedProcess = limitedServer.process;
+
+    try {
+      await limitedConnection.sendRequest<InitializeResult>(
+        'initialize',
+        initParams({
+          initializationOptions: {
+            maxFullAnalysisChars: 10,
+          },
+        }),
+      );
+      limitedConnection.sendNotification('initialized', {});
+
+      const result = await openAndGetDiagnostics(
+        limitedConnection,
+        'file:///tmp/hbs-lsp-test/large-analysis-limit.hbs',
+        '{{#if ready}}abcdefghijklmnopqrstuvwxyz',
+      );
+
+      expect(
+        result.diagnostics.some((diagnostic) =>
+          diagnostic.message.includes('not closed'),
+        ),
+      ).toBe(true);
+      expect(
+        result.diagnostics.some((diagnostic) =>
+          diagnostic.message.toLowerCase().includes('parse error'),
+        ),
+      ).toBe(false);
+    } finally {
+      await limitedConnection.sendRequest('shutdown');
+      limitedConnection.sendNotification('exit');
+      limitedConnection.dispose();
+      if (!limitedProcess.killed) {
+        limitedProcess.kill();
+      }
+    }
+  });
 
   it('re-validates after document change', async () => {
     const uri = 'file:///tmp/hbs-lsp-test/change.hbs';

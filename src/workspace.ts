@@ -5,6 +5,7 @@ import type {
   IndexedPartialSource,
   ServerSettings,
   WorkspaceIndex,
+  WorkspaceIndexRefreshStats,
 } from './types.js';
 import { defaultSettings } from './types.js';
 import { uniqueStrings } from './utilities.js';
@@ -24,7 +25,16 @@ const IGNORED_DIRECTORIES = new Set([
   'out',
 ]);
 
-const MAX_HELPER_SCAN_BYTES = 512 * 1024;
+type ScanLimits = Pick<
+  ServerSettings,
+  'maxSourceScanBytes' | 'maxWorkspaceFiles' | 'maxWalkDepth'
+>;
+
+const DEFAULT_SCAN_LIMITS: ScanLimits = {
+  maxSourceScanBytes: defaultSettings.maxSourceScanBytes,
+  maxWorkspaceFiles: defaultSettings.maxWorkspaceFiles,
+  maxWalkDepth: defaultSettings.maxWalkDepth,
+};
 
 const helperExtractionCache = new Map<
   string,
@@ -52,10 +62,21 @@ export async function walkFiles(
   root: string,
   logger?: Logger,
   out: string[] = [],
+  scanLimits: ScanLimits = DEFAULT_SCAN_LIMITS,
+  refreshStats?: WorkspaceIndexRefreshStats,
 ): Promise<string[]> {
   gitignorePatternCache.delete(root);
   const gitignoreRules = await loadGitignoreRules(root, logger);
-  return walkFilesWithRules(root, root, gitignoreRules, logger, out);
+  return walkFilesWithRules(
+    root,
+    root,
+    gitignoreRules,
+    logger,
+    out,
+    0,
+    scanLimits,
+    refreshStats,
+  );
 }
 
 async function walkFilesWithRules(
@@ -64,6 +85,9 @@ async function walkFilesWithRules(
   gitignoreRules: GitignoreRule[],
   logger?: Logger,
   out: string[] = [],
+  depth = 0,
+  scanLimits: ScanLimits = DEFAULT_SCAN_LIMITS,
+  refreshStats?: WorkspaceIndexRefreshStats,
 ): Promise<string[]> {
   let entries: Dirent[];
   try {
@@ -75,7 +99,26 @@ async function walkFilesWithRules(
     return out;
   }
 
+  if (depth > scanLimits.maxWalkDepth) {
+    if (refreshStats) {
+      refreshStats.scanStoppedDueToLimits = true;
+    }
+    logger?.warn(
+      `Skipping directory ${currentDir}: exceeded maximum workspace scan depth of ${scanLimits.maxWalkDepth}`,
+    );
+    return out;
+  }
+
   for (const entry of entries) {
+    if (out.length >= scanLimits.maxWorkspaceFiles) {
+      if (refreshStats) {
+        refreshStats.scanStoppedDueToLimits = true;
+      }
+      logger?.warn(
+        `Stopping workspace scan at ${scanLimits.maxWorkspaceFiles} files under ${root}`,
+      );
+      return out;
+    }
     if (IGNORED_DIRECTORIES.has(entry.name)) {
       continue;
     }
@@ -92,9 +135,21 @@ async function walkFilesWithRules(
     }
 
     if (entry.isDirectory()) {
-      await walkFilesWithRules(root, fullPath, gitignoreRules, logger, out);
+      await walkFilesWithRules(
+        root,
+        fullPath,
+        gitignoreRules,
+        logger,
+        out,
+        depth + 1,
+        scanLimits,
+        refreshStats,
+      );
     } else if (entry.isFile()) {
       out.push(fullPath);
+      if (refreshStats) {
+        refreshStats.filesDiscovered += 1;
+      }
     }
   }
 
@@ -199,9 +254,8 @@ export function inferPartialNames(
     addPartialAlias(names, match[1]);
   }
 
-  const componentRelativePartial = inferComponentRelativePartialAlias(
-    normalized,
-  );
+  const componentRelativePartial =
+    inferComponentRelativePartialAlias(normalized);
   if (componentRelativePartial) {
     addPartialAlias(names, componentRelativePartial);
   }
@@ -267,6 +321,8 @@ function normalizePartialPath(value: string): string | null {
 export async function extractHelpersFromFile(
   filePath: string,
   logger?: Logger,
+  scanLimits: ScanLimits = DEFAULT_SCAN_LIMITS,
+  refreshStats?: WorkspaceIndexRefreshStats,
 ): Promise<string[]> {
   const ext = path.extname(filePath).toLowerCase();
   if (!['.js', '.cjs', '.mjs', '.ts', '.cts', '.mts'].includes(ext)) {
@@ -276,7 +332,7 @@ export async function extractHelpersFromFile(
   let fileStat: Stats;
   try {
     fileStat = await stat(filePath);
-    if (fileStat.size > MAX_HELPER_SCAN_BYTES) {
+    if (fileStat.size > scanLimits.maxSourceScanBytes) {
       helperExtractionCache.set(filePath, {
         mtimeMs: fileStat.mtimeMs,
         size: fileStat.size,
@@ -285,6 +341,9 @@ export async function extractHelpersFromFile(
       logger?.info(
         `Skipping helper scan for large file ${filePath} (${fileStat.size} bytes)`,
       );
+      if (refreshStats) {
+        refreshStats.filesSkippedTooLarge += 1;
+      }
       return [];
     }
   } catch (error) {
@@ -304,13 +363,14 @@ export async function extractHelpersFromFile(
     return [...cached.helpers];
   }
 
-  let content = '';
-  try {
-    content = await readFile(filePath, 'utf8');
-  } catch (error) {
-    logger?.warn(
-      `Failed to read file ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
-    );
+  const content = await readSourceFile(
+    filePath,
+    logger,
+    'helper scan',
+    scanLimits,
+    refreshStats,
+  );
+  if (content === null) {
     return [];
   }
 
@@ -340,19 +400,22 @@ export async function extractHelpersFromFile(
 export async function extractRegisteredPartialsFromFile(
   filePath: string,
   logger?: Logger,
+  scanLimits: ScanLimits = DEFAULT_SCAN_LIMITS,
+  refreshStats?: WorkspaceIndexRefreshStats,
 ): Promise<string[]> {
   const ext = path.extname(filePath).toLowerCase();
   if (!['.js', '.cjs', '.mjs', '.ts', '.cts', '.mts'].includes(ext)) {
     return [];
   }
 
-  let content = '';
-  try {
-    content = await readFile(filePath, 'utf8');
-  } catch (error) {
-    logger?.warn(
-      `Failed to read file ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
-    );
+  const content = await readSourceFile(
+    filePath,
+    logger,
+    'registered partial scan',
+    scanLimits,
+    refreshStats,
+  );
+  if (content === null) {
     return [];
   }
 
@@ -384,9 +447,29 @@ export async function extractRegisteredPartialsFromFile(
 export async function refreshWorkspaceIndex(
   workspaceIndex: WorkspaceIndex,
   workspaceRoots: string[],
-  configuredPartialRoots: string[] = [],
+  settings: Pick<
+    ServerSettings,
+    'partialRoots' | 'maxSourceScanBytes' | 'maxWorkspaceFiles' | 'maxWalkDepth'
+  > = defaultSettings,
   logger?: Logger,
-): Promise<void> {
+): Promise<WorkspaceIndexRefreshStats> {
+  const start = Date.now();
+  const scanLimits: ScanLimits = {
+    maxSourceScanBytes: settings.maxSourceScanBytes,
+    maxWorkspaceFiles: settings.maxWorkspaceFiles,
+    maxWalkDepth: settings.maxWalkDepth,
+  };
+  const refreshStats: WorkspaceIndexRefreshStats = {
+    workspaceRoots: workspaceRoots.length,
+    filesDiscovered: 0,
+    templateFiles: 0,
+    sourceFilesRead: 0,
+    filesSkippedTooLarge: 0,
+    scanStoppedDueToLimits: false,
+    durationMs: 0,
+    limits: { ...scanLimits },
+  };
+
   helperExtractionCache.clear();
   gitignorePatternCache.clear();
 
@@ -403,7 +486,7 @@ export async function refreshWorkspaceIndex(
   }
 
   for (const root of workspaceRoots) {
-    const files = await walkFiles(root, logger);
+    const files = await walkFiles(root, logger, [], scanLimits, refreshStats);
     const templateFiles: string[] = [];
     const detectedPartialRoots = new Set<string>();
     const detectedPartialsDirRoots = new Set<string>();
@@ -411,15 +494,23 @@ export async function refreshWorkspaceIndex(
     for (const filePath of files) {
       if (/\.(hbs|handlebars)$/i.test(filePath)) {
         templateFiles.push(filePath);
+        refreshStats.templateFiles += 1;
       }
 
-      for (const helper of await extractHelpersFromFile(filePath, logger)) {
+      for (const helper of await extractHelpersFromFile(
+        filePath,
+        logger,
+        scanLimits,
+        refreshStats,
+      )) {
         workspaceIndex.helpers.add(helper);
       }
 
       for (const partial of await extractRegisteredPartialsFromFile(
         filePath,
         logger,
+        scanLimits,
+        refreshStats,
       )) {
         addIndexedPartial(workspaceIndex, partial, filePath, {
           kind: 'registered',
@@ -432,6 +523,8 @@ export async function refreshWorkspaceIndex(
         filePath,
         root,
         logger,
+        scanLimits,
+        refreshStats,
       )) {
         detectedPartialRoots.add(partialRoot);
         detectedPartialsDirRoots.add(partialRoot);
@@ -439,7 +532,7 @@ export async function refreshWorkspaceIndex(
     }
 
     const resolvedPartialRoots = new Set<string>([
-      ...resolveConfiguredPartialRoots(root, configuredPartialRoots),
+      ...resolveConfiguredPartialRoots(root, settings.partialRoots),
       ...detectedPartialRoots,
     ]);
 
@@ -465,6 +558,13 @@ export async function refreshWorkspaceIndex(
       }
     }
   }
+
+  refreshStats.durationMs = Date.now() - start;
+  logger?.info(
+    `Workspace index refreshed: roots=${refreshStats.workspaceRoots}, files=${refreshStats.filesDiscovered}, templates=${refreshStats.templateFiles}, sourceReads=${refreshStats.sourceFilesRead}, skippedLarge=${refreshStats.filesSkippedTooLarge}, limited=${refreshStats.scanStoppedDueToLimits}, durationMs=${refreshStats.durationMs}`,
+  );
+
+  return refreshStats;
 }
 
 function addIndexedPartial(
@@ -481,7 +581,11 @@ function addIndexedPartial(
   }
 
   const sources = workspaceIndex.partialSourcesByName.get(partial) ?? [];
-  if (!sources.some((candidate) => JSON.stringify(candidate) === JSON.stringify(source))) {
+  if (
+    !sources.some(
+      (candidate) => JSON.stringify(candidate) === JSON.stringify(source),
+    )
+  ) {
     sources.push(source);
     workspaceIndex.partialSourcesByName.set(partial, sources);
   }
@@ -524,24 +628,28 @@ async function extractPartialRootsFromFile(
   filePath: string,
   workspaceRoot: string,
   logger?: Logger,
+  scanLimits: ScanLimits = DEFAULT_SCAN_LIMITS,
+  refreshStats?: WorkspaceIndexRefreshStats,
 ): Promise<string[]> {
   const ext = path.extname(filePath).toLowerCase();
   if (!['.js', '.cjs', '.mjs', '.ts', '.cts', '.mts'].includes(ext)) {
     return [];
   }
 
-  let content = '';
-  try {
-    content = await readFile(filePath, 'utf8');
-  } catch (error) {
-    logger?.warn(
-      `Failed to read file ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
-    );
+  const content = await readSourceFile(
+    filePath,
+    logger,
+    'partial root scan',
+    scanLimits,
+    refreshStats,
+  );
+  if (content === null) {
     return [];
   }
 
   const roots = new Set<string>();
-  const partialsDirPattern = /partialsDir\s*:\s*(\[[\s\S]*?\]|['"`][^'"`]+['"`])/g;
+  const partialsDirPattern =
+    /partialsDir\s*:\s*(\[[\s\S]*?\]|['"`][^'"`]+['"`])/g;
   for (const match of content.matchAll(partialsDirPattern)) {
     const value = match[1] ?? '';
     for (const stringMatch of value.matchAll(/['"`]([^'"`]+)['"`]/g)) {
@@ -558,6 +666,47 @@ async function extractPartialRootsFromFile(
   }
 
   return Array.from(roots);
+}
+
+async function readSourceFile(
+  filePath: string,
+  logger: Logger | undefined,
+  purpose: string,
+  scanLimits: ScanLimits = DEFAULT_SCAN_LIMITS,
+  refreshStats?: WorkspaceIndexRefreshStats,
+): Promise<string | null> {
+  let fileStat: Stats;
+  try {
+    fileStat = await stat(filePath);
+  } catch (error) {
+    logger?.warn(
+      `Failed to stat file ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return null;
+  }
+
+  if (fileStat.size > scanLimits.maxSourceScanBytes) {
+    logger?.info(
+      `Skipping ${purpose} for large file ${filePath} (${fileStat.size} bytes)`,
+    );
+    if (refreshStats) {
+      refreshStats.filesSkippedTooLarge += 1;
+    }
+    return null;
+  }
+
+  try {
+    const content = await readFile(filePath, 'utf8');
+    if (refreshStats) {
+      refreshStats.sourceFilesRead += 1;
+    }
+    return content;
+  } catch (error) {
+    logger?.warn(
+      `Failed to read file ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return null;
+  }
 }
 
 export function normalizeSettings(
@@ -596,5 +745,30 @@ export function normalizeSettings(
         : defaultSettings.partialRoots,
     ),
     indexWorkspaceSymbols: merged.indexWorkspaceSymbols !== false,
+    exposeAbsolutePathsInIndex: merged.exposeAbsolutePathsInIndex === true,
+    maxSourceScanBytes: Math.max(
+      Number.isFinite(merged.maxSourceScanBytes)
+        ? Math.floor(merged.maxSourceScanBytes)
+        : defaultSettings.maxSourceScanBytes,
+      1,
+    ),
+    maxWorkspaceFiles: Math.max(
+      Number.isFinite(merged.maxWorkspaceFiles)
+        ? Math.floor(merged.maxWorkspaceFiles)
+        : defaultSettings.maxWorkspaceFiles,
+      1,
+    ),
+    maxWalkDepth: Math.max(
+      Number.isFinite(merged.maxWalkDepth)
+        ? Math.floor(merged.maxWalkDepth)
+        : defaultSettings.maxWalkDepth,
+      1,
+    ),
+    maxFullAnalysisChars: Math.max(
+      Number.isFinite(merged.maxFullAnalysisChars)
+        ? Math.floor(merged.maxFullAnalysisChars)
+        : defaultSettings.maxFullAnalysisChars,
+      1,
+    ),
   };
 }

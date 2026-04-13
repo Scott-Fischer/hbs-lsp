@@ -2,7 +2,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import type { WorkspaceIndex } from '../types.js';
+import { defaultSettings, type WorkspaceIndex } from '../types.js';
 import {
   extractHelpersFromFile,
   extractRegisteredPartialsFromFile,
@@ -51,22 +51,14 @@ describe('inferPartialName', () => {
   });
 
   it('returns additional workspace-relative aliases when a workspace root is provided', () => {
-    expect(
-      inferPartialNames(
-        '/app/foo/partials/bar.hbs',
-        '/app',
-      ),
-    ).toEqual(
+    expect(inferPartialNames('/app/foo/partials/bar.hbs', '/app')).toEqual(
       expect.arrayContaining(['bar', 'foo/partials/bar']),
     );
   });
 
   it('returns component partial aliases for component partial paths', () => {
     expect(
-      inferPartialNames(
-        '/app/x/components/foo/partials/bar.hbs',
-        '/app',
-      ),
+      inferPartialNames('/app/x/components/foo/partials/bar.hbs', '/app'),
     ).toEqual(
       expect.arrayContaining([
         'bar',
@@ -199,14 +191,17 @@ describe('refreshWorkspaceIndex', () => {
       partialSourcesByName: new Map(),
     };
 
-    await refreshWorkspaceIndex(workspaceIndex, [tmpDir]);
+    const stats = await refreshWorkspaceIndex(workspaceIndex, [tmpDir]);
 
+    expect(stats.workspaceRoots).toBe(1);
+    expect(stats.filesDiscovered).toBeGreaterThan(0);
+    expect(stats.templateFiles).toBeGreaterThan(0);
     expect(Array.from(workspaceIndex.partials)).toEqual(
       expect.arrayContaining(['bar', 'foo/partials/bar']),
     );
-    expect(workspaceIndex.partialFilesByName.get('foo/partials/bar')).toEqual(
-      [path.join(tmpDir, 'foo', 'partials', 'bar.hbs')],
-    );
+    expect(workspaceIndex.partialFilesByName.get('foo/partials/bar')).toEqual([
+      path.join(tmpDir, 'foo', 'partials', 'bar.hbs'),
+    ]);
     expect(workspaceIndex.partialSourcesByName.get('foo/partials/bar')).toEqual(
       expect.arrayContaining([expect.objectContaining({ kind: 'heuristic' })]),
     );
@@ -229,30 +224,18 @@ describe('refreshWorkspaceIndex', () => {
       partialSourcesByName: new Map(),
     };
 
-    await refreshWorkspaceIndex(
-      workspaceIndex,
-      [tmpDir],
-      ['./x/components'],
-    );
+    await refreshWorkspaceIndex(workspaceIndex, [tmpDir], {
+      ...defaultSettings,
+      partialRoots: ['./x/components'],
+    });
 
     expect(Array.from(workspaceIndex.partials)).toEqual(
       expect.arrayContaining(['m/partials/n']),
     );
-    expect(
-      workspaceIndex.partialFilesByName.get('m/partials/n'),
-    ).toEqual([
-      path.join(
-        tmpDir,
-        'x',
-        'components',
-        'm',
-        'partials',
-        'n.hbs',
-      ),
+    expect(workspaceIndex.partialFilesByName.get('m/partials/n')).toEqual([
+      path.join(tmpDir, 'x', 'components', 'm', 'partials', 'n.hbs'),
     ]);
-    expect(
-      workspaceIndex.partialSourcesByName.get('m/partials/n'),
-    ).toEqual(
+    expect(workspaceIndex.partialSourcesByName.get('m/partials/n')).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: 'partial-root' }),
       ]),
@@ -316,17 +299,40 @@ describe('refreshWorkspaceIndex', () => {
     await refreshWorkspaceIndex(workspaceIndex, [tmpDir]);
 
     expect(Array.from(workspaceIndex.partials)).toEqual(
-      expect.arrayContaining([
-        'x/foo',
-        'y/bar',
-        'baz',
-      ]),
+      expect.arrayContaining(['x/foo', 'y/bar', 'baz']),
     );
     expect(workspaceIndex.partialSourcesByName.get('x/foo')).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: 'registered' }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ kind: 'registered' })]),
     );
+  });
+
+  it('skips very large files while detecting partial roots', async () => {
+    await mkdir(path.join(tmpDir, 'large-partials'), { recursive: true });
+    await writeFile(
+      path.join(tmpDir, 'large-partials', 'foo.hbs'),
+      '<div></div>',
+      'utf8',
+    );
+    await writeFile(
+      path.join(tmpDir, 'huge-config.ts'),
+      `const engine = { partialsDir: ['./large-partials'] }\n${'a'.repeat(600_000)}`,
+      'utf8',
+    );
+
+    const workspaceIndex: WorkspaceIndex = {
+      helpers: new Set(),
+      partials: new Set(),
+      partialFilesByName: new Map(),
+      partialSourcesByName: new Map(),
+    };
+
+    await refreshWorkspaceIndex(workspaceIndex, [tmpDir]);
+
+    expect(
+      workspaceIndex.partialSourcesByName
+        .get('foo')
+        ?.some((source) => source.kind === 'detected-partialsDir') ?? false,
+    ).toBe(false);
   });
 
   afterAll(async () => {
@@ -335,7 +341,10 @@ describe('refreshWorkspaceIndex', () => {
 });
 
 describe('extractRegisteredPartialsFromFile', () => {
-  const tmpDir = path.join(os.tmpdir(), 'hbs-lsp-registered-partials-test-' + Date.now());
+  const tmpDir = path.join(
+    os.tmpdir(),
+    'hbs-lsp-registered-partials-test-' + Date.now(),
+  );
 
   async function writeTmpFile(name: string, content: string): Promise<string> {
     await mkdir(tmpDir, { recursive: true });
@@ -353,9 +362,7 @@ describe('extractRegisteredPartialsFromFile', () => {
       `,
     );
     const partials = await extractRegisteredPartialsFromFile(filePath);
-    expect(partials).toEqual(
-      expect.arrayContaining(['foo', 'x/bar']),
-    );
+    expect(partials).toEqual(expect.arrayContaining(['foo', 'x/bar']));
   });
 
   it('extracts object-style registerPartial calls', async () => {
@@ -369,9 +376,16 @@ describe('extractRegisteredPartialsFromFile', () => {
       `,
     );
     const partials = await extractRegisteredPartialsFromFile(filePath);
-    expect(partials).toEqual(
-      expect.arrayContaining(['baz', 'x/y']),
+    expect(partials).toEqual(expect.arrayContaining(['baz', 'x/y']));
+  });
+
+  it('skips very large source files', async () => {
+    const filePath = await writeTmpFile(
+      'partials-large.ts',
+      'a'.repeat(600_000),
     );
+    const partials = await extractRegisteredPartialsFromFile(filePath);
+    expect(partials).toHaveLength(0);
   });
 
   afterAll(async () => {

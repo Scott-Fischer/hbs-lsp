@@ -26,9 +26,33 @@ const mustacheRe = /{{~?(?!(?:[#/>!]|else\b))([A-Za-z0-9_./-]+)[^}]*~?}}/g;
 const commentRe = /{{!--[\s\S]*?--}}/g;
 const inlinePartialOpenRe = /{{~?#\*inline\s+["']([^"']+)["'][^}]*~?}}/g;
 
+let maxFullAnalysisChars = 250_000;
+
+export function configureAnalysisLimits(limits: {
+  maxFullAnalysisChars?: number;
+}): void {
+  if (Number.isFinite(limits.maxFullAnalysisChars)) {
+    maxFullAnalysisChars = Math.max(
+      Math.floor(limits.maxFullAnalysisChars ?? maxFullAnalysisChars),
+      1,
+    );
+  }
+}
+
 export function analyzeDocument(text: string): DocumentAnalysis {
   const tokens = tokenizeHandlebars(text);
   const blockAnalysis = analyzeBlockTokens(tokens);
+
+  if (text.length > maxFullAnalysisChars) {
+    return {
+      tokens,
+      blockAnalysis,
+      glimmerAst: null,
+      usedSanitization: false,
+      parseErrors: [],
+      delimiterDiagnostics: [],
+    };
+  }
 
   const sanitizedText = sanitizeForGlimmer(text);
   const usedSanitization = sanitizedText !== text;
@@ -62,7 +86,9 @@ export function tokenizeHandlebars(text: string): HandlebarsToken[] {
   collectMatches(text, partialRe, 'partial', tokens);
   collectMatches(text, mustacheRe, 'mustache', tokens);
 
-  const sorted = tokens.sort((a, b) => a.index - b.index || b.length - a.length);
+  const sorted = tokens.sort(
+    (a, b) => a.index - b.index || b.length - a.length,
+  );
   const filtered: HandlebarsToken[] = [];
 
   for (const token of sorted) {
@@ -189,7 +215,9 @@ export function findDelimiterDiagnostics(
     const raw = match[0];
     const fullIndex = match.index ?? 0;
     const openTagEnd = raw.indexOf('>');
-    const closeTagIndex = raw.toLowerCase().lastIndexOf(`</${(match[1] ?? '').toLowerCase()}`);
+    const closeTagIndex = raw
+      .toLowerCase()
+      .lastIndexOf(`</${(match[1] ?? '').toLowerCase()}`);
     if (openTagEnd === -1 || closeTagIndex === -1) {
       continue;
     }
@@ -256,17 +284,13 @@ function markBalancedGenericHandlebarsRanges(
 
 function isHandlebarsOpenAt(text: string, index: number): boolean {
   return (
-    text[index] === '{' &&
-    text[index + 1] === '{' &&
-    text[index - 1] !== '\\'
+    text[index] === '{' && text[index + 1] === '{' && text[index - 1] !== '\\'
   );
 }
 
 function isHandlebarsCloseAt(text: string, index: number): boolean {
   return (
-    text[index] === '}' &&
-    text[index + 1] === '}' &&
-    text[index - 1] !== '\\'
+    text[index] === '}' && text[index + 1] === '}' && text[index - 1] !== '\\'
   );
 }
 

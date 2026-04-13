@@ -8,6 +8,11 @@ export type ServerSettings = {
   partials: string[];
   partialRoots: string[];
   indexWorkspaceSymbols: boolean;
+  exposeAbsolutePathsInIndex: boolean;
+  maxSourceScanBytes: number;
+  maxWorkspaceFiles: number;
+  maxWalkDepth: number;
+  maxFullAnalysisChars: number;
 };
 
 export type AstSummaryNode = {
@@ -28,6 +33,21 @@ export type IndexedPartialSource = {
   filePath?: string;
   rootPath?: string;
   detail?: string;
+};
+
+export type WorkspaceIndexRefreshStats = {
+  workspaceRoots: number;
+  filesDiscovered: number;
+  templateFiles: number;
+  sourceFilesRead: number;
+  filesSkippedTooLarge: number;
+  scanStoppedDueToLimits: boolean;
+  durationMs: number;
+  limits: {
+    maxSourceScanBytes: number;
+    maxWorkspaceFiles: number;
+    maxWalkDepth: number;
+  };
 };
 
 export type WorkspaceIndex = {
@@ -99,6 +119,11 @@ export const defaultSettings: ServerSettings = {
   enableDiagnostics: true,
   enableFormatting: true,
   indexWorkspaceSymbols: true,
+  exposeAbsolutePathsInIndex: false,
+  maxSourceScanBytes: 512 * 1024,
+  maxWorkspaceFiles: 10_000,
+  maxWalkDepth: 32,
+  maxFullAnalysisChars: 250_000,
   helpers: ['if', 'unless', 'each', 'with', 'let', 'log', 'lookup'],
   partials: [],
   partialRoots: [],

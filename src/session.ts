@@ -4,8 +4,13 @@ import type {
   TextDocuments,
 } from 'vscode-languageserver/node.js';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
+import { configureAnalysisLimits } from './analysis.js';
 import { validateTextDocument as runValidation } from './diagnostics.js';
-import type { ServerSettings, WorkspaceIndex } from './types.js';
+import type {
+  ServerSettings,
+  WorkspaceIndex,
+  WorkspaceIndexRefreshStats,
+} from './types.js';
 import { defaultSettings } from './types.js';
 import { fileUriToPath } from './utilities.js';
 import {
@@ -20,6 +25,7 @@ export type SessionState = {
   documentSettings: Map<string, Thenable<ServerSettings>>;
   workspaceRoots: string[];
   workspaceIndex: WorkspaceIndex;
+  lastRefreshStats: WorkspaceIndexRefreshStats | null;
 };
 
 export function createSessionState(): SessionState {
@@ -34,6 +40,7 @@ export function createSessionState(): SessionState {
       partialFilesByName: new Map<string, string[]>(),
       partialSourcesByName: new Map(),
     },
+    lastRefreshStats: null,
   };
 }
 
@@ -74,6 +81,9 @@ export function initializeSession(
     },
     state.workspaceIndex,
   );
+  configureAnalysisLimits({
+    maxFullAnalysisChars: state.globalSettings.maxFullAnalysisChars,
+  });
 }
 
 export function createSessionHelpers(
@@ -82,33 +92,68 @@ export function createSessionHelpers(
   state: SessionState,
   logger: Logger,
 ) {
-  async function doRefreshWorkspaceIndex(): Promise<void> {
+  let inFlightRefresh: Promise<void> | null = null;
+  let pendingRefresh = false;
+
+  async function runRefreshWorkspaceIndex(): Promise<void> {
     if (state.hasConfigurationCapability) {
       const settings = (await connection.workspace.getConfiguration({
         section: 'handlebars',
       })) as Partial<ServerSettings>;
-      state.globalSettings = {
-        ...state.globalSettings,
-        ...settings,
-        helpers: Array.isArray(settings.helpers)
-          ? settings.helpers
-          : state.globalSettings.helpers,
-        partials: Array.isArray(settings.partials)
-          ? settings.partials
-          : state.globalSettings.partials,
-        partialRoots: Array.isArray(settings.partialRoots)
-          ? settings.partialRoots
-          : state.globalSettings.partialRoots,
-      };
+      state.globalSettings = normalizeSettings(
+        {
+          ...state.globalSettings,
+          ...settings,
+          helpers: Array.isArray(settings.helpers)
+            ? settings.helpers
+            : state.globalSettings.helpers,
+          partials: Array.isArray(settings.partials)
+            ? settings.partials
+            : state.globalSettings.partials,
+          partialRoots: Array.isArray(settings.partialRoots)
+            ? settings.partialRoots
+            : state.globalSettings.partialRoots,
+        },
+        state.workspaceIndex,
+      );
+      configureAnalysisLimits({
+        maxFullAnalysisChars: state.globalSettings.maxFullAnalysisChars,
+      });
     }
 
-    await refreshWorkspaceIndex(
+    state.globalSettings = normalizeSettings(
+      state.globalSettings,
+      state.workspaceIndex,
+    );
+    configureAnalysisLimits({
+      maxFullAnalysisChars: state.globalSettings.maxFullAnalysisChars,
+    });
+
+    state.lastRefreshStats = await refreshWorkspaceIndex(
       state.workspaceIndex,
       state.workspaceRoots,
-      state.globalSettings.partialRoots,
+      state.globalSettings,
       logger,
     );
     state.documentSettings.clear();
+  }
+
+  async function doRefreshWorkspaceIndex(): Promise<void> {
+    if (inFlightRefresh) {
+      pendingRefresh = true;
+      await inFlightRefresh;
+      return;
+    }
+
+    do {
+      pendingRefresh = false;
+      inFlightRefresh = runRefreshWorkspaceIndex();
+      try {
+        await inFlightRefresh;
+      } finally {
+        inFlightRefresh = null;
+      }
+    } while (pendingRefresh);
   }
 
   function getDocumentSettings(resource: string): Thenable<ServerSettings> {
@@ -163,5 +208,6 @@ export function createSessionHelpers(
     getDocumentSettings,
     validateDocument,
     validateOpenDocuments,
+    getLastRefreshStats: () => state.lastRefreshStats,
   };
 }

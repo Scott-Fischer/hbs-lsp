@@ -188,6 +188,8 @@ registerCustomRequestHandlers({
   validateOpenDocuments: sessionHelpers.validateOpenDocuments,
   workspaceIndex: session.workspaceIndex,
   workspaceRoots: session.workspaceRoots,
+  getServerSettings: () => session.globalSettings,
+  getLastRefreshStats: sessionHelpers.getLastRefreshStats,
 });
 
 documents.listen(connection);

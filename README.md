@@ -5,7 +5,7 @@ A lightweight Language Server Protocol server for Handlebars templates.
 Designed for coding agents, editors, and automation tools. Communicates over stdio.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen.svg)](https://nodejs.org)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D20.19.0-brightgreen.svg)](https://nodejs.org)
 
 ## Why hbs-lsp?
 
@@ -32,7 +32,7 @@ Handlebars has ~12M weekly npm downloads but zero standalone LSP support outside
 npm install -g hbs-lsp
 ```
 
-The published package ships the built `dist/` output plus the README and license. Publishing runs lint, tests, and a fresh build before upload.
+The published package ships the built `dist/` output plus the README and license. Publishing runs lint, tests, and a fresh clean build before upload.
 
 ### From source
 
@@ -166,6 +166,11 @@ Settings can be provided via `initializationOptions` at startup or through the `
 | `helpers` | `string[]` | `["if", "unless", "each", "with", "let", "log", "lookup"]` | Known helper names (merged with discovered helpers) |
 | `partials` | `string[]` | `[]` | Known partial names (merged with discovered partials) |
 | `partialRoots` | `string[]` | `[]` | Directories to treat as Handlebars partial roots, resolved relative to the workspace when not absolute |
+| `exposeAbsolutePathsInIndex` | `boolean` | `false` | Expose absolute filesystem paths in `handlebars/index` and `handlebars/reindex` responses |
+| `maxSourceScanBytes` | `number` | `524288` | Maximum JS/TS file size in bytes to scan for helpers, registered partials, and `partialsDir` detection |
+| `maxWorkspaceFiles` | `number` | `10000` | Maximum number of files to discover during workspace indexing before stopping |
+| `maxWalkDepth` | `number` | `32` | Maximum directory recursion depth during workspace indexing |
+| `maxFullAnalysisChars` | `number` | `250000` | Maximum template size in characters for full Glimmer and delimiter analysis before falling back to lighter token/block analysis |
 
 ### Initialization options
 
@@ -178,7 +183,11 @@ Settings can be provided via `initializationOptions` at startup or through the `
     "indexWorkspaceSymbols": true,
     "helpers": ["if", "each", "with", "helperA"],
     "partials": ["foo", "bar"],
-    "partialRoots": ["./partials", "./components"]
+    "partialRoots": ["./partials", "./components"],
+    "maxSourceScanBytes": 524288,
+    "maxWorkspaceFiles": 10000,
+    "maxWalkDepth": 32,
+    "maxFullAnalysisChars": 250000
   }
 }
 ```
@@ -192,7 +201,9 @@ The server reads the `handlebars` section when the client supports `workspace/co
   "handlebars": {
     "indentSize": 4,
     "helpers": ["helperA", "helperB"],
-    "partialRoots": ["./partials", "./components"]
+    "partialRoots": ["./partials", "./components"],
+    "maxWorkspaceFiles": 5000,
+    "maxFullAnalysisChars": 150000
   }
 }
 ```
@@ -234,7 +245,7 @@ When `indexWorkspaceSymbols` is enabled, the server scans workspace folders for:
 - **Partials** — `.hbs` and `.handlebars` files (names inferred from file paths, with special handling for `partials/`, `templates/`, and `views/` directories), plus JS/TS `registerPartial("name", ...)` and `registerPartial({ name: ... })` patterns
 - **Helpers** — JS/TS files containing `registerHelper("name")`, `helper("name")`, or `export const name = helper(` patterns
 
-Very large helper source files are skipped during scanning to keep indexing responsive, and unchanged helper files reuse cached extraction results across reindex runs.
+Very large source files are skipped during helper/partial scanning to keep indexing responsive, and unchanged helper files reuse cached extraction results across reindex runs.
 
 Discovered helpers and partials are merged with any configured values and made available for completions and hover.
 
@@ -284,11 +295,25 @@ Returns a lightweight structural summary of a template. Useful for coding agents
 
 ### `handlebars/index`
 
-Returns the currently indexed helpers, partials, and workspace roots.
+Returns the currently indexed helpers, partials, workspace roots, and the latest refresh stats.
+
+Path values in `roots`, `partialSources[*].filePath`, and `partialSources[*].rootPath` are redacted by default as workspace-relative labels like `workspace:1/...`. Set `exposeAbsolutePathsInIndex: true` if you explicitly want absolute paths in these custom request responses.
 
 ### `handlebars/reindex`
 
-Forces a workspace rescan and returns the refreshed index.
+Forces a workspace rescan and returns the refreshed index plus scan stats.
+
+## Security and operational limits
+
+To reduce accidental or malicious resource exhaustion, `hbs-lsp` applies a few conservative limits by default:
+
+- workspace indexing stops after `maxWorkspaceFiles` discovered files
+- directory recursion stops after `maxWalkDepth`
+- JS/TS source files larger than `maxSourceScanBytes` are skipped for helper/partial extraction
+- templates larger than `maxFullAnalysisChars` skip full Glimmer and delimiter analysis and fall back to lighter token/block analysis
+- `handlebars/index` and `handlebars/reindex` redact absolute filesystem paths by default
+
+These limits are configurable through `initializationOptions` or workspace settings.
 
 ## Coding agent workflow
 

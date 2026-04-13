@@ -7,8 +7,7 @@ import {
 
 describe('tokenizeHandlebars', () => {
   it('returns normalized Handlebars tokens in source order', () => {
-    const text =
-      '{{!-- note --}}{{#if ready}}{{name}}{{> foo}}{{else}}{{/if}}';
+    const text = '{{!-- note --}}{{#if ready}}{{name}}{{> foo}}{{else}}{{/if}}';
     const tokens = tokenizeHandlebars(text);
 
     expect(tokens.map((token) => token.type)).toEqual([
@@ -41,9 +40,7 @@ describe('analyzeDocument', () => {
   });
 
   it('uses sanitization for component/property block helper syntax', () => {
-    const result = analyzeDocument(
-      '<X @y={{#if foo}}A{{else}}B{{/if}} />',
-    );
+    const result = analyzeDocument('<X @y={{#if foo}}A{{else}}B{{/if}} />');
     expect(result.usedSanitization).toBe(true);
     expect(result.glimmerAst).not.toBeNull();
     expect(result.parseErrors).toEqual([]);
@@ -55,6 +52,15 @@ describe('analyzeDocument', () => {
     expect(result.glimmerAst).toBeNull();
     expect(result.parseErrors.length).toBeGreaterThan(0);
     expect(result.parseErrors[0].message.length).toBeGreaterThan(0);
+    expect(result.blockAnalysis.issues).toHaveLength(1);
+    expect(result.blockAnalysis.issues[0].type).toBe('unclosed-open');
+  });
+
+  it('limits full analysis for very large documents', () => {
+    const result = analyzeDocument(`{{#if ready}}${'a'.repeat(300_000)}`);
+    expect(result.glimmerAst).toBeNull();
+    expect(result.parseErrors).toEqual([]);
+    expect(result.delimiterDiagnostics).toEqual([]);
     expect(result.blockAnalysis.issues).toHaveLength(1);
     expect(result.blockAnalysis.issues[0].type).toBe('unclosed-open');
   });
