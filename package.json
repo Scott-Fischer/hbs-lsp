@@ -1,0 +1,63 @@
+{
+  "name": "hbs-lsp",
+  "version": "0.1.0",
+  "description": "A lightweight Language Server Protocol implementation for Handlebars templates.",
+  "type": "module",
+  "main": "dist/server.js",
+  "exports": {
+    ".": "./dist/server.js"
+  },
+  "bin": {
+    "hbs-lsp": "dist/server.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "prepublishOnly": "npm run lint && npm test && npm run build"
+  },
+  "keywords": [
+    "lsp",
+    "language-server",
+    "handlebars",
+    "hbs",
+    "templates"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Scott-Fischer/hbs-lsp.git"
+  },
+  "homepage": "https://github.com/Scott-Fischer/hbs-lsp#readme",
+  "bugs": {
+    "url": "https://github.com/Scott-Fischer/hbs-lsp/issues"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "dependencies": {
+    "@glimmer/env": "^0.1.7",
+    "@glimmer/syntax": "^0.95.0",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.12"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.11",
+    "@types/node": "^20.14.8",
+    "@vitest/coverage-v8": "^4.1.4",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.4"
+  }
+}

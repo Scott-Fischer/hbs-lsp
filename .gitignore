@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+.vscode/
+.idea/
+
+# Agents
+.claude
+.sisyphus
+.github/instructions
+.github/copilot-instructions.md
+PHASED_CHECKLIST.md
+AGENTS.md

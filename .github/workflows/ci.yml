@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    branches:
+      - main
+    paths-ignore:
+      - .gitignore
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  lint-check:
+    name: Biome
+    uses: ./.github/workflows/_biome.yml
+    permissions:
+      contents: read
+
+  run-tests:
+    name: Vitest
+    needs: [ lint-check ]
+    uses: ./.github/workflows/_vitest.yml
+    permissions:
+      contents: read
