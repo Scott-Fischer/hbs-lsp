@@ -1,15 +1,25 @@
 # hbs-lsp
 
-A lightweight Language Server Protocol server for Handlebars templates.
+A standalone Handlebars language server for editors, coding agents, and automation tools.
 
-Designed for coding agents, editors, and automation tools. Communicates over stdio.
+Built for non-Ember Handlebars setups like Express, Fastify, Eleventy, and custom Node applications. Communicates over stdio.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20.19.0-brightgreen.svg)](https://nodejs.org)
 
 ## Why hbs-lsp?
 
-Handlebars has ~12M weekly npm downloads but zero standalone LSP support outside the Ember ecosystem. If you use Handlebars with Express, Fastify, or any non-Ember setup, this is the only LSP that understands your templates.
+`hbs-lsp` is a standalone Handlebars LSP for projects outside the Ember ecosystem. If you use Handlebars with Express, Fastify, Eleventy, or a custom Node stack, this package gives you Handlebars language server support without requiring Ember tooling.
+
+## Who is this for?
+
+Use `hbs-lsp` if you want a Handlebars language server for:
+
+- Express or Fastify apps rendering `.hbs` templates
+- Eleventy or other static-site workflows using Handlebars
+- custom Node services with Handlebars partials/helpers
+- coding agents and automation tools that need structural template analysis
+- editors like VS Code, Neovim, Helix, Emacs, and Sublime Text
 
 ## Features
 

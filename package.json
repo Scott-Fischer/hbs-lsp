@@ -1,7 +1,7 @@
 {
   "name": "hbs-lsp",
   "version": "0.1.0",
-  "description": "A lightweight Language Server Protocol implementation for Handlebars templates.",
+  "description": "A standalone Language Server Protocol server for Handlebars templates in non-Ember apps.",
   "type": "module",
   "main": "dist/server.js",
   "exports": {
@@ -29,11 +29,20 @@
     "prepublishOnly": "npm run lint && npm test && npm run build"
   },
   "keywords": [
+    "handlebars",
+    "handlebars-lsp",
+    "hbs",
     "lsp",
     "language-server",
-    "handlebars",
-    "hbs",
-    "templates"
+    "language-server-protocol",
+    "lsp-server",
+    "templates",
+    "templating",
+    "vscode",
+    "neovim",
+    "helix",
+    "emacs",
+    "sublime-text"
   ],
   "license": "MIT",
   "repository": {
