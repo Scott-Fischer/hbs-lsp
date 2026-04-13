@@ -1,0 +1,128 @@
+{
+  "name": "hbs-lsp-vscode",
+  "displayName": "hbs-lsp",
+  "description": "Minimal VS Code client wrapper for the hbs-lsp language server.",
+  "version": "0.0.1",
+  "private": true,
+  "publisher": "local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Programming Languages"],
+  "activationEvents": [
+    "onLanguage:handlebars",
+    "onCommand:hbs-lsp.showIndex",
+    "onCommand:hbs-lsp.reindexWorkspace"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "handlebars",
+        "aliases": ["Handlebars", "hbs"],
+        "extensions": [".hbs", ".handlebars"]
+      }
+    ],
+    "commands": [
+      {
+        "command": "hbs-lsp.showIndex",
+        "title": "hbs-lsp: Show Index"
+      },
+      {
+        "command": "hbs-lsp.reindexWorkspace",
+        "title": "hbs-lsp: Reindex Workspace"
+      }
+    ],
+    "configuration": {
+      "title": "hbs-lsp",
+      "properties": {
+        "handlebars.indentSize": {
+          "type": "number",
+          "default": 2,
+          "description": "Spaces per indent level used by hbs-lsp formatting."
+        },
+        "handlebars.enableDiagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Handlebars syntax diagnostics."
+        },
+        "handlebars.enableFormatting": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Handlebars document formatting."
+        },
+        "handlebars.indexWorkspaceSymbols": {
+          "type": "boolean",
+          "default": true,
+          "description": "Scan the workspace for helpers and partials."
+        },
+        "handlebars.exposeAbsolutePathsInIndex": {
+          "type": "boolean",
+          "default": false,
+          "description": "Expose absolute filesystem paths in custom workspace index responses."
+        },
+        "handlebars.maxSourceScanBytes": {
+          "type": "number",
+          "default": 524288,
+          "minimum": 1,
+          "description": "Maximum JS/TS file size in bytes to scan for helpers, registered partials, and partial roots."
+        },
+        "handlebars.maxWorkspaceFiles": {
+          "type": "number",
+          "default": 10000,
+          "minimum": 1,
+          "description": "Maximum number of files to discover during workspace indexing before stopping."
+        },
+        "handlebars.maxWalkDepth": {
+          "type": "number",
+          "default": 32,
+          "minimum": 1,
+          "description": "Maximum directory recursion depth during workspace indexing."
+        },
+        "handlebars.maxFullAnalysisChars": {
+          "type": "number",
+          "default": 250000,
+          "minimum": 1,
+          "description": "Maximum document size in characters for full Glimmer and delimiter analysis before the server falls back to lighter token/block analysis."
+        },
+        "handlebars.helpers": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Additional known helper names."
+        },
+        "handlebars.partials": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Additional known partial names."
+        },
+        "handlebars.partialRoots": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Directories to index as partial roots, resolved relative to the workspace when not absolute."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "watch": "tsc -p . -w"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.8",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.8.3"
+  }
+}
