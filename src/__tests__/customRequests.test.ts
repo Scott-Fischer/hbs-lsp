@@ -4,11 +4,13 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { registerCustomRequestHandlers } from '../handlers/customRequests.js';
 import { defaultSettings, type WorkspaceIndex } from '../types.js';
 
+type RequestHandler = (params?: unknown) => unknown;
+
 describe('registerCustomRequestHandlers', () => {
   it('redacts absolute paths in workspace index responses by default', async () => {
-    const requests = new Map<string, (...args: any[]) => unknown>();
+    const requests = new Map<string, RequestHandler>();
     const connection = {
-      onRequest: (method: string, handler: (...args: any[]) => unknown) => {
+      onRequest: (method: string, handler: RequestHandler) => {
         requests.set(method, handler);
       },
     };

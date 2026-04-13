@@ -8,8 +8,7 @@ import {
 
 describe('validateTextDocument', () => {
   it('does not report Glimmer false positives for block helpers inside component properties', () => {
-    const input =
-      '<X @y={{#if foo}}A{{else if bar}}B{{else}}C{{/if}} />';
+    const input = '<X @y={{#if foo}}A{{else if bar}}B{{else}}C{{/if}} />';
     const document = TextDocument.create(
       'file:///example-component.hbs',
       'handlebars',

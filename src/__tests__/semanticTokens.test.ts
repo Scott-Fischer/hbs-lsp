@@ -101,8 +101,7 @@ describe('computeSemanticTokens', () => {
   });
 
   it('marks inline partial declarations and invocations with local semantic modifiers', () => {
-    const text =
-      '{{#*inline "example"}}x{{/inline}}\n{{> example}}';
+    const text = '{{#*inline "example"}}x{{/inline}}\n{{> example}}';
     const document = TextDocument.create(
       'file:///example-inline-tokens.hbs',
       'handlebars',

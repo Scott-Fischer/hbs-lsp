@@ -40,78 +40,80 @@ export function registerNavigationHandlers({
     return buildFoldingRanges(document, analysis.tokens);
   });
 
-  connection.onDefinition(async ({ textDocument, position }): Promise<DefinitionLink[] | null> => {
-    const document = documents.get(textDocument.uri);
-    if (!document) {
-      return null;
-    }
+  connection.onDefinition(
+    async ({ textDocument, position }): Promise<DefinitionLink[] | null> => {
+      const document = documents.get(textDocument.uri);
+      if (!document) {
+        return null;
+      }
 
-    const text = document.getText();
-    const offset = document.offsetAt(position);
-    const word = readTokenAt(text, offset);
-    if (!word) {
-      return null;
-    }
+      const text = document.getText();
+      const offset = document.offsetAt(position);
+      const word = readTokenAt(text, offset);
+      if (!word) {
+        return null;
+      }
 
-    const token = analyzeDocument(text).tokens.find(
-      (candidate) =>
-        candidate.type === 'partial' &&
-        candidate.name === word &&
-        offset >= candidate.index &&
-        offset <= candidate.index + candidate.length,
-    );
-    if (!token) {
-      return null;
-    }
+      const token = analyzeDocument(text).tokens.find(
+        (candidate) =>
+          candidate.type === 'partial' &&
+          candidate.name === word &&
+          offset >= candidate.index &&
+          offset <= candidate.index + candidate.length,
+      );
+      if (!token) {
+        return null;
+      }
 
-    const localInlinePartial = extractInlinePartialDefinitions(text).find(
-      (candidate) => candidate.name === word,
-    );
-    const wordIndex = text.indexOf(word, token.index);
-    const originSelectionRange = offsetRange(
-      document,
-      wordIndex === -1 ? token.index : wordIndex,
-      word.length,
-    );
+      const localInlinePartial = extractInlinePartialDefinitions(text).find(
+        (candidate) => candidate.name === word,
+      );
+      const wordIndex = text.indexOf(word, token.index);
+      const originSelectionRange = offsetRange(
+        document,
+        wordIndex === -1 ? token.index : wordIndex,
+        word.length,
+      );
 
-    if (localInlinePartial) {
-      return [
-        {
-          targetUri: textDocument.uri,
-          targetRange: offsetRange(
-            document,
-            localInlinePartial.fullIndex,
-            localInlinePartial.fullLength,
-          ),
-          targetSelectionRange: offsetRange(
-            document,
-            localInlinePartial.nameIndex,
-            localInlinePartial.nameLength,
-          ),
-          originSelectionRange,
-        },
-      ];
-    }
+      if (localInlinePartial) {
+        return [
+          {
+            targetUri: textDocument.uri,
+            targetRange: offsetRange(
+              document,
+              localInlinePartial.fullIndex,
+              localInlinePartial.fullLength,
+            ),
+            targetSelectionRange: offsetRange(
+              document,
+              localInlinePartial.nameIndex,
+              localInlinePartial.nameLength,
+            ),
+            originSelectionRange,
+          },
+        ];
+      }
 
-    const files = workspaceIndex.partialFilesByName.get(word);
-    if (!files || files.length === 0) {
-      return null;
-    }
+      const files = workspaceIndex.partialFilesByName.get(word);
+      if (!files || files.length === 0) {
+        return null;
+      }
 
-    const links = await Promise.all(
-      files.map(async (filePath): Promise<LocationLink> => {
-        const targetSelectionRange = await readTargetSelectionRange(filePath);
-        return {
-          targetUri: filePathToUri(filePath),
-          targetRange: targetSelectionRange,
-          targetSelectionRange,
-          originSelectionRange,
-        };
-      }),
-    );
+      const links = await Promise.all(
+        files.map(async (filePath): Promise<LocationLink> => {
+          const targetSelectionRange = await readTargetSelectionRange(filePath);
+          return {
+            targetUri: filePathToUri(filePath),
+            targetRange: targetSelectionRange,
+            targetSelectionRange,
+            originSelectionRange,
+          };
+        }),
+      );
 
-    return links;
-  });
+      return links;
+    },
+  );
 }
 
 async function readTargetSelectionRange(filePath: string): Promise<Range> {

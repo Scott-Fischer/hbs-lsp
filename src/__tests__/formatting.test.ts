@@ -58,8 +58,7 @@ describe('formatHandlebars', () => {
   });
 
   it('preserves block helpers inside component properties', () => {
-    const input =
-      '<X @y={{#if foo}}A{{else if bar}}B{{else}}C{{/if}} />';
+    const input = '<X @y={{#if foo}}A{{else if bar}}B{{else}}C{{/if}} />';
     const result = formatHandlebars(input, 2);
     expect(result).toBe(input);
   });

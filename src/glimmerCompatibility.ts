@@ -104,7 +104,9 @@ function isLikelyConditionalHtmlStructureFalsePositive(
     return true;
   }
 
-  const conditionalOpenTagMatch = error.message.match(/Unclosed element `([^`]+)`/);
+  const conditionalOpenTagMatch = error.message.match(
+    /Unclosed element `([^`]+)`/,
+  );
   if (!conditionalOpenTagMatch) {
     return false;
   }
@@ -179,5 +181,7 @@ function isLikelyBracketPathFalsePositive(
   const bracketOpen =
     bracketOpenBefore !== -1 ? bracketOpenBefore : bracketOpenAfter;
   const bracketClose = bracketOpen === -1 ? -1 : line.indexOf(']', bracketOpen);
-  return bracketOpen !== -1 && bracketClose !== -1 && bracketOpen < bracketClose;
+  return (
+    bracketOpen !== -1 && bracketClose !== -1 && bracketOpen < bracketClose
+  );
 }

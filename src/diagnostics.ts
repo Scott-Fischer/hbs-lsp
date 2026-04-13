@@ -81,16 +81,17 @@ function toDiagnostic(document: TextDocument, error: unknown): Diagnostic {
     0,
   );
   const endLine = Math.max(
-    (structuredEndLine ?? messageLocation?.line ?? structuredStartLine ?? 1) - 1,
+    (structuredEndLine ?? messageLocation?.line ?? structuredStartLine ?? 1) -
+      1,
     startLine,
   );
-  const endChar = Math.max(
-    structuredEndColumn ?? startChar + 1,
-    startChar + 1,
-  );
+  const endChar = Math.max(structuredEndColumn ?? startChar + 1, startChar + 1);
 
   const lineText = document.getText().split(/\r?\n/)[startLine] ?? '';
-  const clampedStartChar = Math.min(startChar, Math.max(lineText.length - 1, 0));
+  const clampedStartChar = Math.min(
+    startChar,
+    Math.max(lineText.length - 1, 0),
+  );
   const clampedEndChar = Math.max(
     Math.min(endChar, Math.max(lineText.length, clampedStartChar + 1)),
     clampedStartChar + 1,
@@ -187,7 +188,6 @@ export function validateBlockPairs(
 
   return diagnostics;
 }
-
 
 function dedupeParseDiagnostics(
   parseDiagnostics: Diagnostic[],

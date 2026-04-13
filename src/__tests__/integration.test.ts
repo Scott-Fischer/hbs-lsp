@@ -1,7 +1,7 @@
 import { type ChildProcess, spawn } from 'node:child_process';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createMessageConnection,

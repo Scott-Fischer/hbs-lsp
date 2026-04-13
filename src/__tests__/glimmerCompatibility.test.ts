@@ -4,7 +4,12 @@ import { isKnownGlimmerCompatibilityFalsePositive } from '../glimmerCompatibilit
 import type { DocumentAnalysis, ParseErrorInfo } from '../types.js';
 
 function makeDocument(text: string): TextDocument {
-  return TextDocument.create('file:///compatibility.hbs', 'handlebars', 1, text);
+  return TextDocument.create(
+    'file:///compatibility.hbs',
+    'handlebars',
+    1,
+    text,
+  );
 }
 
 function makeAnalysis(
@@ -42,9 +47,7 @@ describe('isKnownGlimmerCompatibilityFalsePositive', () => {
   });
 
   it('treats sanitization-induced html parse noise as false positives', () => {
-    const document = makeDocument(
-      '<div {{#if cond}}data-x2="x"{{/if}}></div>',
-    );
+    const document = makeDocument('<div {{#if cond}}data-x2="x"{{/if}}></div>');
     const analysis = makeAnalysis({ usedSanitization: true });
     const error = makeError('Unclosed element `div`');
 

@@ -1,12 +1,15 @@
 import type { ASTv1 } from '@glimmer/syntax';
 import {
+  type Range,
   type SemanticTokens,
   SemanticTokensBuilder,
   type SemanticTokensLegend,
-  type Range,
 } from 'vscode-languageserver/node.js';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
-import { analyzeDocument, extractInlinePartialDefinitions } from './analysis.js';
+import {
+  analyzeDocument,
+  extractInlinePartialDefinitions,
+} from './analysis.js';
 import type { TemplateNode } from './ast.js';
 import { pathNameRange, visitTemplateNodes } from './ast.js';
 import { offsetRange, rangeLength } from './utilities.js';
@@ -78,7 +81,9 @@ function flushSemanticTokens(
         left.character - right.character ||
         left.length - right.length ||
         left.tokenType.localeCompare(right.tokenType) ||
-        left.tokenModifiers.join(',').localeCompare(right.tokenModifiers.join(','))
+        left.tokenModifiers
+          .join(',')
+          .localeCompare(right.tokenModifiers.join(','))
       );
     })
     .forEach((token) => {

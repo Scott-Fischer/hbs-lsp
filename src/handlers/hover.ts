@@ -38,10 +38,7 @@ export function registerHoverHandler({
         candidate.name === word,
     );
 
-    if (
-      settings.helpers.includes(word) ||
-      workspaceIndex.helpers.has(word)
-    ) {
+    if (settings.helpers.includes(word) || workspaceIndex.helpers.has(word)) {
       return {
         contents: {
           kind: MarkupKind.Markdown,
@@ -64,10 +61,7 @@ export function registerHoverHandler({
       };
     }
 
-    if (
-      settings.partials.includes(word) ||
-      workspaceIndex.partials.has(word)
-    ) {
+    if (settings.partials.includes(word) || workspaceIndex.partials.has(word)) {
       return {
         contents: {
           kind: MarkupKind.Markdown,

@@ -49,8 +49,7 @@ describe('sanitizeForGlimmer', () => {
   });
 
   it('masks block helpers inside component/property syntax', () => {
-    const input =
-      '<X @y={{#if foo}}A{{else if bar}}B{{else}}C{{/if}} />';
+    const input = '<X @y={{#if foo}}A{{else if bar}}B{{else}}C{{/if}} />';
     const result = sanitizeForGlimmer(input);
     expect(result).not.toContain('{{#if');
     expect(result).not.toContain('{{else if');
