@@ -2,7 +2,7 @@
   "name": "hbs-lsp-vscode",
   "displayName": "hbs-lsp",
   "description": "VS Code extension for the hbs-lsp Handlebars language server.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "scott-fischer",
   "license": "MIT",
   "icon": "media/icon.png",
