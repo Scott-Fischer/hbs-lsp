@@ -12,6 +12,9 @@ permissions:
 jobs:
   package:
     runs-on: ubuntu-latest
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
 
     steps:
       - name: Checkout
@@ -44,13 +47,19 @@ jobs:
           path: vscode-extension/*.vsix
 
       - name: Publish to VS Code Marketplace
-        if: startsWith(github.ref, 'refs/tags/vscode-v') && secrets.VSCE_PAT != ''
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: npm --prefix vscode-extension run publish:vsce -- --pat "$VSCE_PAT"
+        if: startsWith(github.ref, 'refs/tags/vscode-v')
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "VSCE_PAT is not set; skipping VS Code Marketplace publish."
+            exit 0
+          fi
+          npm --prefix vscode-extension run publish:vsce -- --pat "$VSCE_PAT"
 
-      - name: Publish to Open VSX
-        if: startsWith(github.ref, 'refs/tags/vscode-v') && secrets.OVSX_PAT != ''
-        env:
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: npm --prefix vscode-extension run publish:ovsx -- --pat "$OVSX_PAT"
+      # - name: Publish to Open VSX
+      #   if: startsWith(github.ref, 'refs/tags/vscode-v')
+      #   run: |
+      #     if [ -z "$OVSX_PAT" ]; then
+      #       echo "OVSX_PAT is not set; skipping Open VSX publish."
+      #       exit 0
+      #     fi
+      #     npm --prefix vscode-extension run publish:ovsx -- --pat "$OVSX_PAT"
