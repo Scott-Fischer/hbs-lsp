@@ -1,0 +1,56 @@
+name: VS Code Extension
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'vscode-v*'
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            vscode-extension/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install extension dependencies
+        run: npm --prefix vscode-extension ci
+
+      - name: Package extension
+        run: npm --prefix vscode-extension run package
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hbs-lsp-vscode-vsix
+          path: vscode-extension/*.vsix
+
+      - name: Publish to VS Code Marketplace
+        if: startsWith(github.ref, 'refs/tags/vscode-v') && secrets.VSCE_PAT != ''
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npm --prefix vscode-extension run publish:vsce -- --pat "$VSCE_PAT"
+
+      - name: Publish to Open VSX
+        if: startsWith(github.ref, 'refs/tags/vscode-v') && secrets.OVSX_PAT != ''
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: npm --prefix vscode-extension run publish:ovsx -- --pat "$OVSX_PAT"

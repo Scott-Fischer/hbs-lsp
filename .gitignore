@@ -1,5 +1,7 @@
 node_modules/
 dist/
+vscode-extension/server/
+vscode-extension/*.vsix
 coverage/
 *.log
 .DS_Store

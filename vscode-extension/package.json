@@ -1,15 +1,26 @@
 {
   "name": "hbs-lsp-vscode",
   "displayName": "hbs-lsp",
-  "description": "Minimal VS Code client wrapper for the hbs-lsp language server.",
-  "version": "0.0.1",
-  "private": true,
-  "publisher": "local",
+  "description": "VS Code extension for the hbs-lsp Handlebars language server.",
+  "version": "0.1.0",
+  "publisher": "scott-fischer",
   "license": "MIT",
+  "icon": "media/icon.png",
   "engines": {
     "vscode": "^1.90.0"
   },
-  "categories": ["Programming Languages"],
+  "categories": ["Programming Languages", "Formatters", "Linters"],
+  "keywords": [
+    "handlebars",
+    "hbs",
+    "language server",
+    "lsp",
+    "templates",
+    "glimmer",
+    "express",
+    "fastify",
+    "eleventy"
+  ],
   "activationEvents": [
     "onLanguage:handlebars",
     "onCommand:hbs-lsp.showIndex",
@@ -114,15 +125,33 @@
     }
   },
   "scripts": {
-    "build": "tsc -p .",
-    "watch": "tsc -p . -w"
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true }); require('node:fs').rmSync('server', { recursive: true, force: true })\"",
+    "build": "npm --prefix .. run build && tsc -p . && node ./scripts/bundle-server.cjs",
+    "watch": "tsc -p . -w",
+    "package": "npm run build && npx @vscode/vsce package",
+    "publish:vsce": "npm run build && npx @vscode/vsce publish",
+    "publish:ovsx": "npm run package && npx ovsx publish hbs-lsp-vscode-${npm_package_version}.vsix"
   },
   "dependencies": {
-    "vscode-languageclient": "^9.0.1"
+    "@glimmer/env": "^0.1.7",
+    "@glimmer/syntax": "^0.95.0",
+    "vscode-languageclient": "^9.0.1",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.12"
   },
   "devDependencies": {
     "@types/node": "^20.14.8",
     "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.6.2",
+    "ovsx": "^0.10.4",
     "typescript": "^5.8.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Scott-Fischer/hbs-lsp.git"
+  },
+  "homepage": "https://github.com/Scott-Fischer/hbs-lsp/tree/main/vscode-extension",
+  "bugs": {
+    "url": "https://github.com/Scott-Fischer/hbs-lsp/issues"
   }
 }
