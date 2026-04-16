@@ -90,9 +90,32 @@ end
 lspconfig.hbs_lsp.setup({})
 ```
 
+### VS Code
+
+The recommended setup is the dedicated VS Code extension in [`vscode-extension/`](vscode-extension). It bundles the language server, so users do not need a separate global `npm install` once the extension is published.
+
+For now, you can build and run it locally:
+
+```bash
+npm install
+cd vscode-extension
+npm install
+npm run build
+code .
+```
+
+Then open the `vscode-extension/` folder in VS Code and run the **Run Extension** launch configuration (or press `F5`). The extension starts its bundled `server/dist/server.js` over stdio and forwards the `handlebars.*` workspace settings to the server.
+
+To package the extension for installation or publishing:
+
+```bash
+cd vscode-extension
+npm run package
+```
+
 ### VS Code (generic LSP client)
 
-Use an extension like [vscode-glspc](https://marketplace.visualstudio.com/items?itemName=AZMCode.glspc) or any generic LSP client extension:
+If you prefer using a generic LSP client extension such as [vscode-glspc](https://marketplace.visualstudio.com/items?itemName=AZMCode.glspc), configure it like this:
 
 ```json
 {
@@ -102,20 +125,6 @@ Use an extension like [vscode-glspc](https://marketplace.visualstudio.com/items?
 }
 ```
 
-### VS Code (local wrapper extension in this repo)
-
-This repository also includes a minimal VS Code client wrapper in [`vscode-extension/`](vscode-extension).
-
-```bash
-npm install
-npm run build
-cd vscode-extension
-npm install
-npm run build
-code .
-```
-
-Then open the `vscode-extension/` folder in VS Code and run the **Run Extension** launch configuration (or press `F5` after adding a standard extension-host launch config). The wrapper starts `../dist/server.js` over stdio and forwards the `handlebars.*` workspace settings to the server.
 
 ### Helix
 

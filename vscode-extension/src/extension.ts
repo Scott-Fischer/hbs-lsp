@@ -42,7 +42,12 @@ let outputChannel: vscode.OutputChannel | undefined;
 export async function activate(
   context: vscode.ExtensionContext,
 ): Promise<void> {
-  const serverPath = path.resolve(context.extensionPath, '..', 'dist', 'server.js');
+  const serverPath = path.resolve(
+    context.extensionPath,
+    'server',
+    'dist',
+    'server.js',
+  );
 
   outputChannel = vscode.window.createOutputChannel('hbs-lsp');
   context.subscriptions.push(outputChannel);
