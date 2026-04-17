@@ -173,6 +173,7 @@ async function readHelperTargetSelectionRange(
         String.raw`(?:^|\n|,)\s*(${escapeRegExp(helperName)})\s*(?=,|$)`,
         'g',
       ),
+      new RegExp(String.raw`\b(${escapeRegExp(helperName)})\b`, 'g'),
     ];
 
     for (const pattern of patterns) {
