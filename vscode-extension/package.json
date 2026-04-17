@@ -2,7 +2,7 @@
   "name": "hbs-lsp-vscode",
   "displayName": "hbs-lsp",
   "description": "VS Code extension for the hbs-lsp Handlebars language server.",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "publisher": "scott-fischer",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -24,7 +24,9 @@
   "activationEvents": [
     "onLanguage:handlebars",
     "onCommand:hbs-lsp.showIndex",
-    "onCommand:hbs-lsp.reindexWorkspace"
+    "onCommand:hbs-lsp.reindexWorkspace",
+    "onCommand:hbs-lsp.showOutput",
+    "onCommand:hbs-lsp.restartServer"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -38,11 +40,23 @@
     "commands": [
       {
         "command": "hbs-lsp.showIndex",
-        "title": "hbs-lsp: Show Index"
+        "title": "hbs-lsp: Show Index",
+        "category": "hbs-lsp"
       },
       {
         "command": "hbs-lsp.reindexWorkspace",
-        "title": "hbs-lsp: Reindex Workspace"
+        "title": "Reindex Workspace",
+        "category": "hbs-lsp"
+      },
+      {
+        "command": "hbs-lsp.showOutput",
+        "title": "Show Output",
+        "category": "hbs-lsp"
+      },
+      {
+        "command": "hbs-lsp.restartServer",
+        "title": "Restart Server",
+        "category": "hbs-lsp"
       }
     ],
     "configuration": {
@@ -126,25 +140,21 @@
   },
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true }); require('node:fs').rmSync('server', { recursive: true, force: true })\"",
-    "build": "npm --prefix .. run build && tsc -p . && node ./scripts/bundle-server.cjs",
-    "watch": "tsc -p . -w",
+    "build": "npm --prefix .. run typecheck && npm run typecheck && node ./scripts/build-client.cjs && node ./scripts/bundle-server.cjs",
+    "typecheck": "tsc -p . --noEmit",
+    "watch": "npx esbuild src/extension.ts --bundle --platform=node --format=cjs --outfile=dist/extension.js --external:vscode --watch",
     "package": "npm run build && npx @vscode/vsce package",
     "publish:vsce": "npm run build && npx @vscode/vsce publish",
     "publish:ovsx": "npm run package && npx ovsx publish hbs-lsp-vscode-${npm_package_version}.vsix"
-  },
-  "dependencies": {
-    "@glimmer/env": "^0.1.7",
-    "@glimmer/syntax": "^0.95.0",
-    "vscode-languageclient": "^9.0.1",
-    "vscode-languageserver": "^9.0.1",
-    "vscode-languageserver-textdocument": "^1.0.12"
   },
   "devDependencies": {
     "@types/node": "^20.14.8",
     "@types/vscode": "^1.90.0",
     "@vscode/vsce": "^3.6.2",
+    "esbuild": "^0.25.11",
     "ovsx": "^0.10.4",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vscode-languageclient": "^9.0.1"
   },
   "repository": {
     "type": "git",

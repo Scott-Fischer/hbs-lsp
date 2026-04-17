@@ -55,8 +55,12 @@ if (args.includes('--version') || args.includes('-v')) {
   try {
     const pkg = JSON.parse(await readFile(pkgPath, 'utf8')) as {
       version: string;
+      bundledInExtensionVersion?: string;
     };
-    process.stdout.write(`${pkg.version}\n`);
+    const versionText = pkg.bundledInExtensionVersion
+      ? `${pkg.version} (bundled in hbs-lsp-vscode ${pkg.bundledInExtensionVersion})`
+      : pkg.version;
+    process.stdout.write(`${versionText}\n`);
   } catch {
     process.stdout.write('unknown\n');
   }
