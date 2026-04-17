@@ -2,6 +2,17 @@
 
 All notable changes to the `hbs-lsp` VS Code extension will be documented in this file.
 
+## [0.1.5] - 2026-04-16
+
+### Fixed
+- Fixed helper indexing for aliased helper bag imports used in Express Handlebars config.
+- Fixed false positives where helper-like patterns in comments, strings, or commented-out spreads could be indexed.
+- Fixed reindex behavior when imported or spread-based helper source modules change or are deleted.
+- Improved reliability of helper definition targeting for indexed helpers.
+
+### Changed
+- Expanded regression coverage for helper indexing, definition resolution, reindex behavior, and session settings flow.
+
 ## [0.1.4] - 2026-04-16
 
 ### Added
