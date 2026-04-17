@@ -675,6 +675,134 @@ describe('LSP Integration', () => {
     );
   });
 
+  it('resolves block helper definitions to indexed source files', async () => {
+    const helperPath = path.join(tmpRoot, 'src', 'block-helper.js');
+    await mkdir(path.dirname(helperPath), { recursive: true });
+    await writeFile(
+      helperPath,
+      `
+      module.exports = {
+        formatDate(value) { return value; },
+      };
+      `,
+      'utf8',
+    );
+
+    await connection.sendRequest('handlebars/reindex');
+
+    const uri = 'file:///tmp/hbs-lsp-test/definition-block-helper.hbs';
+    openDocument(connection, uri, '{{#formatDate createdAt}}x{{/formatDate}}');
+    await new Promise((r) => setTimeout(r, 100));
+
+    const result = await connection.sendRequest<Definition | null>(
+      'textDocument/definition',
+      {
+        textDocument: { uri },
+        position: { line: 0, character: 5 },
+      },
+    );
+
+    expect(Array.isArray(result)).toBe(true);
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          targetUri: 'file:///tmp/hbs-lsp-test/src/block-helper.js',
+        }),
+      ]),
+    );
+  });
+
+  it('targets exported const helper names precisely in definition results', async () => {
+    const helperPath = path.join(tmpRoot, 'src', 'definition-target-export.ts');
+    await mkdir(path.dirname(helperPath), { recursive: true });
+    await writeFile(
+      helperPath,
+      'export const preciseHelper = helper(function preciseHelper() {});\n',
+      'utf8',
+    );
+
+    await connection.sendRequest('handlebars/reindex');
+
+    const uri = 'file:///tmp/hbs-lsp-test/definition-target-export.hbs';
+    openDocument(connection, uri, '{{preciseHelper value}}');
+    await new Promise((r) => setTimeout(r, 100));
+
+    const result = await connection.sendRequest<Definition | null>(
+      'textDocument/definition',
+      {
+        textDocument: { uri },
+        position: { line: 0, character: 4 },
+      },
+    );
+
+    const firstLink =
+      Array.isArray(result) && result[0] && 'targetSelectionRange' in result[0]
+        ? result[0]
+        : null;
+    expect(firstLink?.targetSelectionRange).toEqual({
+      start: { line: 0, character: 13 },
+      end: { line: 0, character: 26 },
+    });
+  });
+
+  it('targets shorthand helper names precisely in definition results', async () => {
+    const helperPath = path.join(
+      tmpRoot,
+      'src',
+      'definition-target-shorthand.js',
+    );
+    await mkdir(path.dirname(helperPath), { recursive: true });
+    await writeFile(
+      helperPath,
+      `
+      const shorthandHelper = value => value;
+      module.exports = {
+        shorthandHelper,
+      };
+      `,
+      'utf8',
+    );
+
+    await connection.sendRequest('handlebars/reindex');
+
+    const uri = 'file:///tmp/hbs-lsp-test/definition-target-shorthand.hbs';
+    openDocument(connection, uri, '{{shorthandHelper value}}');
+    await new Promise((r) => setTimeout(r, 100));
+
+    const result = await connection.sendRequest<Definition | null>(
+      'textDocument/definition',
+      {
+        textDocument: { uri },
+        position: { line: 0, character: 4 },
+      },
+    );
+
+    const firstLink =
+      Array.isArray(result) && result[0] && 'targetSelectionRange' in result[0]
+        ? result[0]
+        : null;
+    expect(firstLink?.targetSelectionRange).toEqual({
+      start: { line: 3, character: 8 },
+      end: { line: 3, character: 23 },
+    });
+  });
+
+  it('returns null for non-indexed helpers', async () => {
+    const uri = 'file:///tmp/hbs-lsp-test/definition-missing-helper.hbs';
+    openDocument(connection, uri, '{{missingHelper value}}');
+    await new Promise((r) => setTimeout(r, 100));
+
+    const result = await connection.sendRequest<Definition | null>(
+      'textDocument/definition',
+      {
+        textDocument: { uri },
+        position: { line: 0, character: 4 },
+      },
+    );
+
+    expect(result).toBeNull();
+  });
+
   // ── Formatting ────────────────────────────────────────────
 
   it('formats a poorly indented template', async () => {

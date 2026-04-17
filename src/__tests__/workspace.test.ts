@@ -625,6 +625,159 @@ describe('extractHelpersFromFile', () => {
     );
   });
 
+  it('extracts helpers from aliased require() helper bags used in ExpressHandlebars config', async () => {
+    await writeTmpFile(
+      'aliased-helpers.js',
+      `
+      module.exports = {
+        formatDate,
+        uppercase: (value) => value,
+      };
+      `,
+    );
+    const filePath = await writeTmpFile(
+      'express-variable-alias.js',
+      `
+      const viewHelpers = require('./aliased-helpers');
+
+      const expressHandlebars = new ExpressHandlebars({
+        helpers: viewHelpers,
+      });
+      `,
+    );
+    const helpers = await extractHelpersFromFile(filePath);
+    expect(helpers).toEqual(
+      expect.arrayContaining(['formatDate', 'uppercase']),
+    );
+  });
+
+  it('deduplicates helper names discovered from direct and spread sources', async () => {
+    const filePath = await writeTmpFile(
+      'helpers-dedupe.js',
+      `
+      const sharedHelpers = {
+        formatDate,
+        uppercase,
+      };
+
+      module.exports = {
+        formatDate,
+        ...sharedHelpers,
+      };
+      `,
+    );
+    const helpers = await extractHelpersFromFile(filePath);
+    expect(helpers.filter((helper) => helper === 'formatDate')).toHaveLength(1);
+  });
+
+  it('ignores unrelated helpers objects that are not exported or wired to ExpressHandlebars', async () => {
+    const filePath = await writeTmpFile(
+      'helpers-unrelated.js',
+      `
+      const helpers = {
+        formatDate,
+        uppercase,
+      };
+
+      const somethingElse = { helpers };
+      module.exports = { headline };
+      `,
+    );
+    const helpers = await extractHelpersFromFile(filePath);
+    expect(helpers).toEqual(expect.arrayContaining(['headline']));
+    expect(helpers).not.toEqual(
+      expect.arrayContaining(['formatDate', 'uppercase']),
+    );
+  });
+
+  it('returns safely when a spread import cannot be resolved', async () => {
+    const filePath = await writeTmpFile(
+      'helpers-missing-spread.js',
+      `
+      const missingHelpers = require('./does-not-exist');
+
+      module.exports = {
+        headline,
+        ...missingHelpers,
+      };
+      `,
+    );
+    const helpers = await extractHelpersFromFile(filePath);
+    expect(helpers).toEqual(expect.arrayContaining(['headline']));
+  });
+
+  it('does not extract helper names from comment-only helper-like text', async () => {
+    const filePath = await writeTmpFile(
+      'helpers-comments-only.js',
+      `
+      // module.exports = { fakeHelper }
+      /*
+        helpers: {
+          fakeHelper,
+        }
+      */
+      const value = 1;
+      `,
+    );
+    const helpers = await extractHelpersFromFile(filePath);
+    expect(helpers).not.toEqual(expect.arrayContaining(['fakeHelper']));
+  });
+
+  it('does not extract helper names from string-only helper-like text', async () => {
+    const filePath = await writeTmpFile(
+      'helpers-strings-only.js',
+      `
+      const text = "module.exports = { fakeHelper }";
+      const moreText = 'helpers: { fakeHelper }';
+      module.exports = { realHelper };
+      `,
+    );
+    const helpers = await extractHelpersFromFile(filePath);
+    expect(helpers).toEqual(expect.arrayContaining(['realHelper']));
+    expect(helpers).not.toEqual(expect.arrayContaining(['fakeHelper']));
+  });
+
+  it('does not extract fake helper names from commented spreads', async () => {
+    const filePath = await writeTmpFile(
+      'helpers-commented-spread.js',
+      `
+      const sharedHelpers = require('./shared-helpers');
+      module.exports = {
+        realHelper,
+        // ...fakeHelpers,
+      };
+      `,
+    );
+    const helpers = await extractHelpersFromFile(filePath);
+    expect(helpers).toEqual(expect.arrayContaining(['realHelper']));
+    expect(helpers).not.toEqual(expect.arrayContaining(['fakeHelpers']));
+  });
+
+  it('does not recurse forever on cyclic spread imports', async () => {
+    await writeTmpFile(
+      'helpers-cycle-a.js',
+      `
+      const b = require('./helpers-cycle-b');
+      module.exports = {
+        fromA,
+        ...b,
+      };
+      `,
+    );
+    const filePath = await writeTmpFile(
+      'helpers-cycle-b.js',
+      `
+      const a = require('./helpers-cycle-a');
+      module.exports = {
+        fromB,
+        ...a,
+      };
+      `,
+    );
+    const helpers = await extractHelpersFromFile(filePath);
+    expect(helpers).toEqual(expect.arrayContaining(['fromA', 'fromB']));
+  });
+
   it('returns empty for non-JS files', async () => {
     const filePath = await writeTmpFile(
       'template.hbs',
@@ -709,6 +862,112 @@ describe('refreshWorkspaceIndex cache bounding', () => {
 
     await refreshWorkspaceIndex(index, [tmpDir]);
     expect(index.helpers.has('myHelper')).toBe(false);
+  });
+
+  it('updates imported helper names after reindex when the source module changes', async () => {
+    await mkdir(path.join(tmpDir, 'src'), { recursive: true });
+    const helperModulePath = path.join(tmpDir, 'src', 'helpers.js');
+    const enginePath = path.join(tmpDir, 'src', 'engine.js');
+
+    await writeFile(
+      helperModulePath,
+      `module.exports = { oldHelper };
+`,
+      'utf8',
+    );
+    await writeFile(
+      enginePath,
+      `
+      const helpers = require('./helpers');
+      const expressHandlebars = new ExpressHandlebars({ helpers });
+      `,
+      'utf8',
+    );
+
+    const index = makeIndex();
+    await refreshWorkspaceIndex(index, [tmpDir]);
+    expect(index.helpers.has('oldHelper')).toBe(true);
+    expect(index.helpers.has('newHelper')).toBe(false);
+
+    await writeFile(
+      helperModulePath,
+      `module.exports = { newHelper };
+`,
+      'utf8',
+    );
+
+    await refreshWorkspaceIndex(index, [tmpDir]);
+    expect(index.helpers.has('oldHelper')).toBe(false);
+    expect(index.helpers.has('newHelper')).toBe(true);
+  });
+
+  it('updates spread-derived helper names after reindex when the spread source changes', async () => {
+    await mkdir(path.join(tmpDir, 'src3'), { recursive: true });
+    const sharedPath = path.join(tmpDir, 'src3', 'shared.js');
+    const helperPath = path.join(tmpDir, 'src3', 'helpers.js');
+
+    await writeFile(
+      sharedPath,
+      `module.exports = { oldSpreadHelper };
+`,
+      'utf8',
+    );
+    await writeFile(
+      helperPath,
+      `
+      const sharedHelpers = require('./shared');
+      module.exports = {
+        ...sharedHelpers,
+      };
+      `,
+      'utf8',
+    );
+
+    const index = makeIndex();
+    await refreshWorkspaceIndex(index, [tmpDir]);
+    expect(index.helpers.has('oldSpreadHelper')).toBe(true);
+    expect(index.helpers.has('newSpreadHelper')).toBe(false);
+
+    await writeFile(
+      sharedPath,
+      `module.exports = { newSpreadHelper };
+`,
+      'utf8',
+    );
+
+    await refreshWorkspaceIndex(index, [tmpDir]);
+    expect(index.helpers.has('oldSpreadHelper')).toBe(false);
+    expect(index.helpers.has('newSpreadHelper')).toBe(true);
+  });
+
+  it('removes imported helper names after reindex when the source module is deleted', async () => {
+    await mkdir(path.join(tmpDir, 'src4'), { recursive: true });
+    const helperModulePath = path.join(tmpDir, 'src4', 'helpers.js');
+    const enginePath = path.join(tmpDir, 'src4', 'engine.js');
+
+    await writeFile(
+      helperModulePath,
+      `module.exports = { importedHelper };
+`,
+      'utf8',
+    );
+    await writeFile(
+      enginePath,
+      `
+      const helpers = require('./helpers');
+      const expressHandlebars = new ExpressHandlebars({ helpers });
+      `,
+      'utf8',
+    );
+
+    const index = makeIndex();
+    await refreshWorkspaceIndex(index, [tmpDir]);
+    expect(index.helpers.has('importedHelper')).toBe(true);
+
+    await rm(helperModulePath);
+
+    await refreshWorkspaceIndex(index, [tmpDir]);
+    expect(index.helpers.has('importedHelper')).toBe(false);
   });
 
   it('clears gitignorePatternCache at the start of each reindex', async () => {

@@ -396,6 +396,8 @@ async function extractHelpersFromFileInternal(
     return [];
   }
 
+  const sanitizedContent = stripComments(content);
+
   const helpers = new Set<string>();
   const patterns = [
     /registerHelper\(\s*['"]([A-Za-z0-9_./-]+)['"]/g,
@@ -404,22 +406,29 @@ async function extractHelpersFromFileInternal(
   ];
 
   for (const pattern of patterns) {
-    for (const match of content.matchAll(pattern)) {
+    for (const match of sanitizedContent.matchAll(pattern)) {
       helpers.add(match[1]);
     }
   }
 
-  for (const helper of extractExpressHandlebarsHelpers(content)) {
+  for (const helper of await extractExpressHandlebarsHelpers(
+    filePath,
+    sanitizedContent,
+    logger,
+    scanLimits,
+    refreshStats,
+    visitedFiles,
+  )) {
     helpers.add(helper);
   }
 
-  for (const helper of extractExportedHelperBagHelpers(content)) {
+  for (const helper of extractExportedHelperBagHelpers(sanitizedContent)) {
     helpers.add(helper);
   }
 
   for (const helper of await extractSpreadHelpersFromFile(
     filePath,
-    content,
+    sanitizedContent,
     logger,
     scanLimits,
     refreshStats,
@@ -462,7 +471,14 @@ function extractExportedHelperBagHelpers(content: string): string[] {
   return Array.from(helpers);
 }
 
-function extractExpressHandlebarsHelpers(content: string): string[] {
+async function extractExpressHandlebarsHelpers(
+  filePath: string,
+  content: string,
+  logger: Logger | undefined,
+  scanLimits: ScanLimits,
+  refreshStats: WorkspaceIndexRefreshStats | undefined,
+  visitedFiles: Set<string>,
+): Promise<string[]> {
   const helpers = new Set<string>();
 
   for (const objectBody of extractInlineHelpersOptionObjects(content)) {
@@ -472,12 +488,34 @@ function extractExpressHandlebarsHelpers(content: string): string[] {
   }
 
   for (const variableName of extractHelpersOptionVariableNames(content)) {
+    let resolvedAny = false;
+
     for (const objectBody of extractNamedObjectAssignments(
       content,
       variableName,
     )) {
+      resolvedAny = true;
       for (const helper of extractHelperNamesFromObjectBody(objectBody)) {
         helpers.add(helper);
+      }
+    }
+
+    if (!resolvedAny) {
+      const importedModulePath = await resolveImportedModulePath(
+        filePath,
+        content,
+        variableName,
+      );
+      if (importedModulePath) {
+        for (const helper of await extractHelpersFromFileInternal(
+          importedModulePath,
+          logger,
+          scanLimits,
+          refreshStats,
+          visitedFiles,
+        )) {
+          helpers.add(helper);
+        }
       }
     }
   }
@@ -487,7 +525,7 @@ function extractExpressHandlebarsHelpers(content: string): string[] {
 
 function extractInlineHelpersOptionObjects(content: string): string[] {
   const objectBodies: string[] = [];
-  const inlineHelpersPattern = /helpers\s*:\s*\{/g;
+  const inlineHelpersPattern = /(?:^|[,{(]\s*)helpers\s*:\s*\{/g;
 
   for (const match of content.matchAll(inlineHelpersPattern)) {
     const openingBraceIndex = match.index + match[0].lastIndexOf('{');
@@ -521,7 +559,7 @@ function extractHelpersOptionVariableNames(content: string): string[] {
 function extractExpressHandlebarsConfigBodies(content: string): string[] {
   const configBodies: string[] = [];
   const constructorPattern =
-    /new\s+(?:[A-Za-z_$][A-Za-z0-9_$]*\.)?ExpressHandlebars\s*\(\s*\{/g;
+    /(?:^|\n)[\s\w=]*new\s+(?:[A-Za-z_$][A-Za-z0-9_$]*\.)?ExpressHandlebars\s*\(\s*\{/g;
 
   for (const match of content.matchAll(constructorPattern)) {
     const openingBraceIndex = match.index + match[0].lastIndexOf('{');
@@ -537,7 +575,10 @@ function extractExpressHandlebarsConfigBodies(content: string): string[] {
 function extractNamedExportedHelperObjects(content: string): string[] {
   const objectBodies: string[] = [];
 
-  for (const objectBody of extractNamedObjectAssignments(content, 'helpers')) {
+  for (const objectBody of extractExportedNamedObjectAssignments(
+    content,
+    'helpers',
+  )) {
     objectBodies.push(objectBody);
   }
 
@@ -565,7 +606,7 @@ function extractNamedExportedHelperObjects(content: string): string[] {
 function extractDefaultExportedHelperObjects(content: string): string[] {
   const objectBodies: string[] = [];
 
-  const defaultObjectPattern = /export\s+default\s*\{/g;
+  const defaultObjectPattern = /(?:^|\n)\s*export\s+default\s*\{/g;
   for (const match of content.matchAll(defaultObjectPattern)) {
     const openingBraceIndex = match.index + match[0].lastIndexOf('{');
     const objectBody = readBalancedObjectBody(content, openingBraceIndex);
@@ -575,7 +616,7 @@ function extractDefaultExportedHelperObjects(content: string): string[] {
   }
 
   for (const match of content.matchAll(
-    /export\s+default\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*;/g,
+    /(?:^|\n)\s*export\s+default\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*;/g,
   )) {
     const exportedName = match[1];
     for (const objectBody of extractNamedObjectAssignments(
@@ -592,7 +633,7 @@ function extractDefaultExportedHelperObjects(content: string): string[] {
 function extractCommonJsExportedHelperObjects(content: string): string[] {
   const objectBodies: string[] = [];
 
-  const moduleExportsObjectPattern = /module\.exports\s*=\s*\{/g;
+  const moduleExportsObjectPattern = /(?:^|\n)\s*module\.exports\s*=\s*\{/g;
   for (const match of content.matchAll(moduleExportsObjectPattern)) {
     const openingBraceIndex = match.index + match[0].lastIndexOf('{');
     const objectBody = readBalancedObjectBody(content, openingBraceIndex);
@@ -602,7 +643,7 @@ function extractCommonJsExportedHelperObjects(content: string): string[] {
   }
 
   for (const match of content.matchAll(
-    /module\.exports\s*=\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*;/g,
+    /(?:^|\n)\s*module\.exports\s*=\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*;/g,
   )) {
     const exportedName = match[1];
     for (const objectBody of extractNamedObjectAssignments(
@@ -613,7 +654,30 @@ function extractCommonJsExportedHelperObjects(content: string): string[] {
     }
   }
 
-  for (const match of content.matchAll(/exports\.helpers\s*=\s*\{/g)) {
+  for (const match of content.matchAll(
+    /(?:^|\n)\s*exports\.helpers\s*=\s*\{/g,
+  )) {
+    const openingBraceIndex = match.index + match[0].lastIndexOf('{');
+    const objectBody = readBalancedObjectBody(content, openingBraceIndex);
+    if (objectBody !== null) {
+      objectBodies.push(objectBody);
+    }
+  }
+
+  return objectBodies;
+}
+
+function extractExportedNamedObjectAssignments(
+  content: string,
+  variableName: string,
+): string[] {
+  const objectBodies: string[] = [];
+  const variablePattern = new RegExp(
+    String.raw`export\s+(?:const|let|var)\s+${escapeRegExp(variableName)}\s*=\s*\{`,
+    'g',
+  );
+
+  for (const match of content.matchAll(variablePattern)) {
     const openingBraceIndex = match.index + match[0].lastIndexOf('{');
     const objectBody = readBalancedObjectBody(content, openingBraceIndex);
     if (objectBody !== null) {
@@ -630,7 +694,7 @@ function extractNamedObjectAssignments(
 ): string[] {
   const objectBodies: string[] = [];
   const variablePattern = new RegExp(
-    String.raw`(?:export\s+)?(?:const|let|var)\s+${escapeRegExp(variableName)}\s*=\s*\{`,
+    String.raw`(?:const|let|var)\s+${escapeRegExp(variableName)}\s*=\s*\{`,
     'g',
   );
 
@@ -914,6 +978,60 @@ function extractHelperNamesFromObjectBody(objectBody: string): string[] {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function stripComments(content: string): string {
+  let result = '';
+  let index = 0;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  while (index < content.length) {
+    const char = content[index];
+    const next = content[index + 1];
+
+    if (inLineComment) {
+      if (char === '\n') {
+        inLineComment = false;
+        result += '\n';
+      } else {
+        result += ' ';
+      }
+      index += 1;
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (char === '*' && next === '/') {
+        inBlockComment = false;
+        result += '  ';
+        index += 2;
+      } else {
+        result += char === '\n' ? '\n' : ' ';
+        index += 1;
+      }
+      continue;
+    }
+
+    if (char === '/' && next === '/') {
+      inLineComment = true;
+      result += '  ';
+      index += 2;
+      continue;
+    }
+
+    if (char === '/' && next === '*') {
+      inBlockComment = true;
+      result += '  ';
+      index += 2;
+      continue;
+    }
+
+    result += char;
+    index += 1;
+  }
+
+  return result;
 }
 
 export async function extractRegisteredPartialsFromFile(
