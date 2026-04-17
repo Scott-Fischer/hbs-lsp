@@ -36,6 +36,7 @@ export function createSessionState(): SessionState {
     workspaceRoots: [],
     workspaceIndex: {
       helpers: new Set(defaultSettings.helpers),
+      helperFilesByName: new Map<string, string[]>(),
       partials: new Set(defaultSettings.partials),
       partialFilesByName: new Map<string, string[]>(),
       partialSourcesByName: new Map(),

@@ -56,7 +56,6 @@ export function registerNavigationHandlers({
 
       const token = analyzeDocument(text).tokens.find(
         (candidate) =>
-          candidate.type === 'partial' &&
           candidate.name === word &&
           offset >= candidate.index &&
           offset <= candidate.index + candidate.length,
@@ -65,9 +64,6 @@ export function registerNavigationHandlers({
         return null;
       }
 
-      const localInlinePartial = extractInlinePartialDefinitions(text).find(
-        (candidate) => candidate.name === word,
-      );
       const wordIndex = text.indexOf(word, token.index);
       const originSelectionRange = offsetRange(
         document,
@@ -75,6 +71,38 @@ export function registerNavigationHandlers({
         word.length,
       );
 
+      if (
+        (token.type === 'mustache' || token.type === 'block-open') &&
+        workspaceIndex.helperFilesByName.has(word)
+      ) {
+        const helperFiles = workspaceIndex.helperFilesByName.get(word);
+        if (!helperFiles || helperFiles.length === 0) {
+          return null;
+        }
+
+        return Promise.all(
+          helperFiles.map(async (filePath): Promise<LocationLink> => {
+            const targetSelectionRange = await readHelperTargetSelectionRange(
+              filePath,
+              word,
+            );
+            return {
+              targetUri: filePathToUri(filePath),
+              targetRange: targetSelectionRange,
+              targetSelectionRange,
+              originSelectionRange,
+            };
+          }),
+        );
+      }
+
+      if (token.type !== 'partial') {
+        return null;
+      }
+
+      const localInlinePartial = extractInlinePartialDefinitions(text).find(
+        (candidate) => candidate.name === word,
+      );
       if (localInlinePartial) {
         return [
           {
@@ -99,7 +127,7 @@ export function registerNavigationHandlers({
         return null;
       }
 
-      const links = await Promise.all(
+      return Promise.all(
         files.map(async (filePath): Promise<LocationLink> => {
           const targetSelectionRange = await readTargetSelectionRange(filePath);
           return {
@@ -110,10 +138,59 @@ export function registerNavigationHandlers({
           };
         }),
       );
-
-      return links;
     },
   );
+}
+
+async function readHelperTargetSelectionRange(
+  filePath: string,
+  helperName: string,
+): Promise<Range> {
+  try {
+    const text = await readFile(filePath, 'utf8');
+    const patterns = [
+      new RegExp(
+        String.raw`(?:Handlebars\.)?registerHelper\(\s*['"](${escapeRegExp(helperName)})['"]`,
+        'g',
+      ),
+      new RegExp(
+        String.raw`helper\(\s*['"](${escapeRegExp(helperName)})['"]`,
+        'g',
+      ),
+      new RegExp(
+        String.raw`export\s+const\s+(${escapeRegExp(helperName)})\s*=\s*(?:helper|\()`,
+        'g',
+      ),
+      new RegExp(
+        String.raw`(?:^|\n|,)\s*(?:['"](${escapeRegExp(helperName)})['"]|(${escapeRegExp(helperName)}))\s*:`,
+        'g',
+      ),
+      new RegExp(
+        String.raw`(?:^|\n|,)\s*(${escapeRegExp(helperName)})\s*\([^)]*\)\s*\{`,
+        'g',
+      ),
+      new RegExp(
+        String.raw`(?:^|\n|,)\s*(${escapeRegExp(helperName)})\s*(?=,|$)`,
+        'g',
+      ),
+    ];
+
+    for (const pattern of patterns) {
+      const match = pattern.exec(text);
+      if (!match) {
+        continue;
+      }
+
+      const helperIndex = match.index + match[0].indexOf(helperName);
+      if (helperIndex >= 0) {
+        return rangeFromTextOffset(text, helperIndex, helperName.length);
+      }
+    }
+  } catch {
+    return zeroRange();
+  }
+
+  return readTargetSelectionRange(filePath);
 }
 
 async function readTargetSelectionRange(filePath: string): Promise<Range> {
@@ -135,6 +212,33 @@ async function readTargetSelectionRange(filePath: string): Promise<Range> {
   } catch {
     return zeroRange();
   }
+}
+
+function rangeFromTextOffset(
+  text: string,
+  index: number,
+  length: number,
+): Range {
+  const start = positionAtOffset(text, index);
+  const end = positionAtOffset(text, index + length);
+  return { start, end };
+}
+
+function positionAtOffset(
+  text: string,
+  offset: number,
+): { line: number; character: number } {
+  const clampedOffset = Math.max(0, Math.min(offset, text.length));
+  const before = text.slice(0, clampedOffset);
+  const lines = before.split(/\r?\n/);
+  return {
+    line: lines.length - 1,
+    character: lines.at(-1)?.length ?? 0,
+  };
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function zeroRange(): Range {

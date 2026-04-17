@@ -525,6 +525,156 @@ describe('LSP Integration', () => {
     );
   });
 
+  it('resolves helper definitions to indexed source files', async () => {
+    const helperPath = path.join(tmpRoot, 'src', 'helpers.ts');
+    await mkdir(path.dirname(helperPath), { recursive: true });
+    await writeFile(
+      helperPath,
+      'export const formatDate = helper(function formatDate() {});\n',
+      'utf8',
+    );
+
+    await connection.sendRequest('handlebars/reindex');
+
+    const uri = 'file:///tmp/hbs-lsp-test/definition-helper.hbs';
+    openDocument(connection, uri, '{{formatDate createdAt}}');
+    await new Promise((r) => setTimeout(r, 100));
+
+    const result = await connection.sendRequest<Definition | null>(
+      'textDocument/definition',
+      {
+        textDocument: { uri },
+        position: { line: 0, character: 4 },
+      },
+    );
+
+    expect(Array.isArray(result)).toBe(true);
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          targetUri: 'file:///tmp/hbs-lsp-test/src/helpers.ts',
+        }),
+      ]),
+    );
+  });
+
+  it('resolves imported ExpressHandlebars helper bag definitions to indexed source files', async () => {
+    const helperModulePath = path.join(tmpRoot, 'src', 'helpers.js');
+    const enginePath = path.join(tmpRoot, 'src', 'engine.js');
+    await mkdir(path.dirname(helperModulePath), { recursive: true });
+    await writeFile(
+      helperModulePath,
+      `
+      module.exports = {
+        formatDate(value) { return value; },
+      };
+      `,
+      'utf8',
+    );
+    await writeFile(
+      enginePath,
+      `
+      const helpers = require('./helpers');
+
+      const expressHandlebars = new ExpressHandlebars({
+        helpers,
+        partialsDir: ['./server/views/partials'],
+      });
+      `,
+      'utf8',
+    );
+
+    await connection.sendRequest('handlebars/reindex');
+
+    const uri = 'file:///tmp/hbs-lsp-test/definition-helper-bag.hbs';
+    openDocument(connection, uri, '{{formatDate createdAt}}');
+    await new Promise((r) => setTimeout(r, 100));
+
+    const result = await connection.sendRequest<Definition | null>(
+      'textDocument/definition',
+      {
+        textDocument: { uri },
+        position: { line: 0, character: 4 },
+      },
+    );
+
+    expect(Array.isArray(result)).toBe(true);
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          targetUri: 'file:///tmp/hbs-lsp-test/src/helpers.js',
+        }),
+      ]),
+    );
+  });
+
+  it('resolves spread-imported helper definitions to indexed source files', async () => {
+    const sharedPath = path.join(tmpRoot, 'src', 'shared-helpers.js');
+    const helperModulePath = path.join(
+      tmpRoot,
+      'src',
+      'helpers-with-spread.js',
+    );
+    const enginePath = path.join(tmpRoot, 'src', 'engine-spread.js');
+    await mkdir(path.dirname(sharedPath), { recursive: true });
+    await writeFile(
+      sharedPath,
+      `
+      module.exports = {
+        formatDate(value) { return value; },
+      };
+      `,
+      'utf8',
+    );
+    await writeFile(
+      helperModulePath,
+      `
+      const sharedHelpers = require('./shared-helpers');
+
+      module.exports = {
+        featureFlag,
+        ...sharedHelpers,
+      };
+      `,
+      'utf8',
+    );
+    await writeFile(
+      enginePath,
+      `
+      const helpers = require('./helpers-with-spread');
+
+      const expressHandlebars = new ExpressHandlebars({
+        helpers,
+        partialsDir: ['./server/views/partials'],
+      });
+      `,
+      'utf8',
+    );
+
+    await connection.sendRequest('handlebars/reindex');
+
+    const uri = 'file:///tmp/hbs-lsp-test/definition-helper-spread.hbs';
+    openDocument(connection, uri, '{{formatDate createdAt}}');
+    await new Promise((r) => setTimeout(r, 100));
+
+    const result = await connection.sendRequest<Definition | null>(
+      'textDocument/definition',
+      {
+        textDocument: { uri },
+        position: { line: 0, character: 4 },
+      },
+    );
+
+    expect(Array.isArray(result)).toBe(true);
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          targetUri: 'file:///tmp/hbs-lsp-test/src/shared-helpers.js',
+        }),
+      ]),
+    );
+  });
+
   // ── Formatting ────────────────────────────────────────────
 
   it('formats a poorly indented template', async () => {

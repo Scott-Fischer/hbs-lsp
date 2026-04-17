@@ -324,6 +324,28 @@ export async function extractHelpersFromFile(
   scanLimits: ScanLimits = DEFAULT_SCAN_LIMITS,
   refreshStats?: WorkspaceIndexRefreshStats,
 ): Promise<string[]> {
+  return extractHelpersFromFileInternal(
+    filePath,
+    logger,
+    scanLimits,
+    refreshStats,
+    new Set<string>(),
+  );
+}
+
+async function extractHelpersFromFileInternal(
+  filePath: string,
+  logger: Logger | undefined,
+  scanLimits: ScanLimits,
+  refreshStats: WorkspaceIndexRefreshStats | undefined,
+  visitedFiles: Set<string>,
+): Promise<string[]> {
+  const normalizedFilePath = path.resolve(filePath);
+  if (visitedFiles.has(normalizedFilePath)) {
+    return [];
+  }
+  visitedFiles.add(normalizedFilePath);
+
   const ext = path.extname(filePath).toLowerCase();
   if (!['.js', '.cjs', '.mjs', '.ts', '.cts', '.mts'].includes(ext)) {
     return [];
@@ -387,6 +409,25 @@ export async function extractHelpersFromFile(
     }
   }
 
+  for (const helper of extractExpressHandlebarsHelpers(content)) {
+    helpers.add(helper);
+  }
+
+  for (const helper of extractExportedHelperBagHelpers(content)) {
+    helpers.add(helper);
+  }
+
+  for (const helper of await extractSpreadHelpersFromFile(
+    filePath,
+    content,
+    logger,
+    scanLimits,
+    refreshStats,
+    visitedFiles,
+  )) {
+    helpers.add(helper);
+  }
+
   const extractedHelpers = Array.from(helpers);
   helperExtractionCache.set(filePath, {
     mtimeMs: fileStat.mtimeMs,
@@ -395,6 +436,484 @@ export async function extractHelpersFromFile(
   });
 
   return extractedHelpers;
+}
+
+function extractExportedHelperBagHelpers(content: string): string[] {
+  const helpers = new Set<string>();
+
+  for (const objectBody of extractNamedExportedHelperObjects(content)) {
+    for (const helper of extractHelperNamesFromObjectBody(objectBody)) {
+      helpers.add(helper);
+    }
+  }
+
+  for (const objectBody of extractDefaultExportedHelperObjects(content)) {
+    for (const helper of extractHelperNamesFromObjectBody(objectBody)) {
+      helpers.add(helper);
+    }
+  }
+
+  for (const objectBody of extractCommonJsExportedHelperObjects(content)) {
+    for (const helper of extractHelperNamesFromObjectBody(objectBody)) {
+      helpers.add(helper);
+    }
+  }
+
+  return Array.from(helpers);
+}
+
+function extractExpressHandlebarsHelpers(content: string): string[] {
+  const helpers = new Set<string>();
+
+  for (const objectBody of extractInlineHelpersOptionObjects(content)) {
+    for (const helper of extractHelperNamesFromObjectBody(objectBody)) {
+      helpers.add(helper);
+    }
+  }
+
+  for (const variableName of extractHelpersOptionVariableNames(content)) {
+    for (const objectBody of extractNamedObjectAssignments(
+      content,
+      variableName,
+    )) {
+      for (const helper of extractHelperNamesFromObjectBody(objectBody)) {
+        helpers.add(helper);
+      }
+    }
+  }
+
+  return Array.from(helpers);
+}
+
+function extractInlineHelpersOptionObjects(content: string): string[] {
+  const objectBodies: string[] = [];
+  const inlineHelpersPattern = /helpers\s*:\s*\{/g;
+
+  for (const match of content.matchAll(inlineHelpersPattern)) {
+    const openingBraceIndex = match.index + match[0].lastIndexOf('{');
+    const objectBody = readBalancedObjectBody(content, openingBraceIndex);
+    if (objectBody !== null) {
+      objectBodies.push(objectBody);
+    }
+  }
+
+  return objectBodies;
+}
+
+function extractHelpersOptionVariableNames(content: string): string[] {
+  const variableNames = new Set<string>();
+
+  for (const objectBody of extractExpressHandlebarsConfigBodies(content)) {
+    for (const match of objectBody.matchAll(
+      /\bhelpers\s*:\s*([A-Za-z_$][A-Za-z0-9_$]*)/g,
+    )) {
+      variableNames.add(match[1]);
+    }
+
+    if (/\bhelpers\b/.test(objectBody)) {
+      variableNames.add('helpers');
+    }
+  }
+
+  return Array.from(variableNames);
+}
+
+function extractExpressHandlebarsConfigBodies(content: string): string[] {
+  const configBodies: string[] = [];
+  const constructorPattern =
+    /new\s+(?:[A-Za-z_$][A-Za-z0-9_$]*\.)?ExpressHandlebars\s*\(\s*\{/g;
+
+  for (const match of content.matchAll(constructorPattern)) {
+    const openingBraceIndex = match.index + match[0].lastIndexOf('{');
+    const objectBody = readBalancedObjectBody(content, openingBraceIndex);
+    if (objectBody !== null) {
+      configBodies.push(objectBody);
+    }
+  }
+
+  return configBodies;
+}
+
+function extractNamedExportedHelperObjects(content: string): string[] {
+  const objectBodies: string[] = [];
+
+  for (const objectBody of extractNamedObjectAssignments(content, 'helpers')) {
+    objectBodies.push(objectBody);
+  }
+
+  for (const match of content.matchAll(/export\s*\{([^}]+)\}/g)) {
+    const exportList = match[1] ?? '';
+    for (const exported of exportList.split(',')) {
+      const [localName, exportedName] = exported
+        .trim()
+        .split(/\s+as\s+/i)
+        .map((value) => value.trim());
+      if ((exportedName ?? localName) === 'helpers' && localName) {
+        for (const objectBody of extractNamedObjectAssignments(
+          content,
+          localName,
+        )) {
+          objectBodies.push(objectBody);
+        }
+      }
+    }
+  }
+
+  return objectBodies;
+}
+
+function extractDefaultExportedHelperObjects(content: string): string[] {
+  const objectBodies: string[] = [];
+
+  const defaultObjectPattern = /export\s+default\s*\{/g;
+  for (const match of content.matchAll(defaultObjectPattern)) {
+    const openingBraceIndex = match.index + match[0].lastIndexOf('{');
+    const objectBody = readBalancedObjectBody(content, openingBraceIndex);
+    if (objectBody !== null) {
+      objectBodies.push(objectBody);
+    }
+  }
+
+  for (const match of content.matchAll(
+    /export\s+default\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*;/g,
+  )) {
+    const exportedName = match[1];
+    for (const objectBody of extractNamedObjectAssignments(
+      content,
+      exportedName,
+    )) {
+      objectBodies.push(objectBody);
+    }
+  }
+
+  return objectBodies;
+}
+
+function extractCommonJsExportedHelperObjects(content: string): string[] {
+  const objectBodies: string[] = [];
+
+  const moduleExportsObjectPattern = /module\.exports\s*=\s*\{/g;
+  for (const match of content.matchAll(moduleExportsObjectPattern)) {
+    const openingBraceIndex = match.index + match[0].lastIndexOf('{');
+    const objectBody = readBalancedObjectBody(content, openingBraceIndex);
+    if (objectBody !== null) {
+      objectBodies.push(objectBody);
+    }
+  }
+
+  for (const match of content.matchAll(
+    /module\.exports\s*=\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*;/g,
+  )) {
+    const exportedName = match[1];
+    for (const objectBody of extractNamedObjectAssignments(
+      content,
+      exportedName,
+    )) {
+      objectBodies.push(objectBody);
+    }
+  }
+
+  for (const match of content.matchAll(/exports\.helpers\s*=\s*\{/g)) {
+    const openingBraceIndex = match.index + match[0].lastIndexOf('{');
+    const objectBody = readBalancedObjectBody(content, openingBraceIndex);
+    if (objectBody !== null) {
+      objectBodies.push(objectBody);
+    }
+  }
+
+  return objectBodies;
+}
+
+function extractNamedObjectAssignments(
+  content: string,
+  variableName: string,
+): string[] {
+  const objectBodies: string[] = [];
+  const variablePattern = new RegExp(
+    String.raw`(?:export\s+)?(?:const|let|var)\s+${escapeRegExp(variableName)}\s*=\s*\{`,
+    'g',
+  );
+
+  for (const match of content.matchAll(variablePattern)) {
+    const openingBraceIndex = match.index + match[0].lastIndexOf('{');
+    const objectBody = readBalancedObjectBody(content, openingBraceIndex);
+    if (objectBody !== null) {
+      objectBodies.push(objectBody);
+    }
+  }
+
+  return objectBodies;
+}
+
+function readBalancedObjectBody(
+  content: string,
+  openingBraceIndex: number,
+): string | null {
+  let depth = 0;
+
+  for (let index = openingBraceIndex; index < content.length; index += 1) {
+    const char = content[index];
+    if (char === '{') {
+      depth += 1;
+      continue;
+    }
+
+    if (char === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return content.slice(openingBraceIndex + 1, index);
+      }
+    }
+  }
+
+  return null;
+}
+
+async function extractSpreadHelpersFromFile(
+  filePath: string,
+  content: string,
+  logger: Logger | undefined,
+  scanLimits: ScanLimits,
+  refreshStats: WorkspaceIndexRefreshStats | undefined,
+  visitedFiles: Set<string>,
+): Promise<string[]> {
+  const helpers = new Set<string>();
+
+  for (const objectBody of [
+    ...extractNamedExportedHelperObjects(content),
+    ...extractDefaultExportedHelperObjects(content),
+    ...extractCommonJsExportedHelperObjects(content),
+    ...extractInlineHelpersOptionObjects(content),
+  ]) {
+    for (const spreadName of extractSpreadReferencesFromObjectBody(
+      objectBody,
+    )) {
+      for (const helper of await resolveSpreadReferenceHelpers(
+        filePath,
+        content,
+        spreadName,
+        logger,
+        scanLimits,
+        refreshStats,
+        visitedFiles,
+      )) {
+        helpers.add(helper);
+      }
+    }
+  }
+
+  for (const variableName of extractHelpersOptionVariableNames(content)) {
+    for (const objectBody of extractNamedObjectAssignments(
+      content,
+      variableName,
+    )) {
+      for (const spreadName of extractSpreadReferencesFromObjectBody(
+        objectBody,
+      )) {
+        for (const helper of await resolveSpreadReferenceHelpers(
+          filePath,
+          content,
+          spreadName,
+          logger,
+          scanLimits,
+          refreshStats,
+          visitedFiles,
+        )) {
+          helpers.add(helper);
+        }
+      }
+    }
+  }
+
+  return Array.from(helpers);
+}
+
+async function resolveSpreadReferenceHelpers(
+  filePath: string,
+  content: string,
+  spreadName: string,
+  logger: Logger | undefined,
+  scanLimits: ScanLimits,
+  refreshStats: WorkspaceIndexRefreshStats | undefined,
+  visitedFiles: Set<string>,
+): Promise<string[]> {
+  const helpers = new Set<string>();
+  const localName = spreadName.replace(/\(\)$/, '');
+
+  for (const objectBody of extractNamedObjectAssignments(content, localName)) {
+    for (const helper of extractHelperNamesFromObjectBody(objectBody)) {
+      helpers.add(helper);
+    }
+  }
+
+  for (const helper of extractHelperNamesFromFactoryFunction(
+    content,
+    localName,
+  )) {
+    helpers.add(helper);
+  }
+
+  const importedModulePath = await resolveImportedModulePath(
+    filePath,
+    content,
+    localName,
+  );
+  if (importedModulePath) {
+    for (const helper of await extractHelpersFromFileInternal(
+      importedModulePath,
+      logger,
+      scanLimits,
+      refreshStats,
+      visitedFiles,
+    )) {
+      helpers.add(helper);
+    }
+  }
+
+  return Array.from(helpers);
+}
+
+function extractSpreadReferencesFromObjectBody(objectBody: string): string[] {
+  const spreads = new Set<string>();
+  const spreadPattern = /\.\.\.\s*([A-Za-z_$][A-Za-z0-9_$]*\s*(?:\(\))?)/g;
+
+  for (const match of objectBody.matchAll(spreadPattern)) {
+    spreads.add((match[1] ?? '').replace(/\s+/g, ''));
+  }
+
+  return Array.from(spreads);
+}
+
+function extractHelperNamesFromFactoryFunction(
+  content: string,
+  functionName: string,
+): string[] {
+  const helpers = new Set<string>();
+  const patterns = [
+    new RegExp(
+      String.raw`(?:const|let|var)\s+${escapeRegExp(functionName)}\s*=\s*\([^)]*\)\s*=>\s*\[([\s\S]*?)\]`,
+      'g',
+    ),
+    new RegExp(
+      String.raw`function\s+${escapeRegExp(functionName)}\s*\([^)]*\)\s*\{([\s\S]*?)\}`,
+      'g',
+    ),
+  ];
+
+  for (const pattern of patterns) {
+    for (const match of content.matchAll(pattern)) {
+      const body = match[1] ?? '';
+      for (const stringMatch of body.matchAll(
+        /['"]([A-Za-z_$][A-Za-z0-9_$-]*)['"]/g,
+      )) {
+        helpers.add(stringMatch[1]);
+      }
+      const returnObjectMatch = body.match(/return\s*\{/);
+      if (returnObjectMatch?.index !== undefined) {
+        const openingBraceIndex =
+          (match.index ?? 0) +
+          returnObjectMatch.index +
+          returnObjectMatch[0].lastIndexOf('{');
+        const objectBody = readBalancedObjectBody(content, openingBraceIndex);
+        if (objectBody !== null) {
+          for (const helper of extractHelperNamesFromObjectBody(objectBody)) {
+            helpers.add(helper);
+          }
+        }
+      }
+    }
+  }
+
+  return Array.from(helpers);
+}
+
+async function resolveImportedModulePath(
+  filePath: string,
+  content: string,
+  identifier: string,
+): Promise<string | null> {
+  const patterns = [
+    new RegExp(
+      String.raw`(?:const|let|var)\s+${escapeRegExp(identifier)}\s*=\s*require\(\s*['"]([^'"]+)['"]\s*\)`,
+      'g',
+    ),
+    new RegExp(
+      String.raw`import\s+${escapeRegExp(identifier)}\s+from\s+['"]([^'"]+)['"]`,
+      'g',
+    ),
+    new RegExp(
+      String.raw`import\s+\*\s+as\s+${escapeRegExp(identifier)}\s+from\s+['"]([^'"]+)['"]`,
+      'g',
+    ),
+  ];
+
+  for (const pattern of patterns) {
+    const match = pattern.exec(content);
+    const requestPath = match?.[1];
+    if (requestPath?.startsWith('.')) {
+      return resolveModuleFilePath(path.dirname(filePath), requestPath);
+    }
+  }
+
+  return null;
+}
+
+async function resolveModuleFilePath(
+  baseDir: string,
+  requestPath: string,
+): Promise<string | null> {
+  const candidates = [
+    path.resolve(baseDir, requestPath),
+    ...['.js', '.cjs', '.mjs', '.ts', '.cts', '.mts'].map((extension) =>
+      path.resolve(baseDir, `${requestPath}${extension}`),
+    ),
+    ...['.js', '.cjs', '.mjs', '.ts', '.cts', '.mts'].map((extension) =>
+      path.resolve(baseDir, requestPath, `index${extension}`),
+    ),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const candidateStat = await stat(candidate);
+      if (candidateStat.isFile()) {
+        return candidate;
+      }
+    } catch {
+      // ignore missing candidates
+    }
+  }
+
+  return null;
+}
+
+function extractHelperNamesFromObjectBody(objectBody: string): string[] {
+  const helpers = new Set<string>();
+  const propertyPattern =
+    /(?:^|\n|,)\s*(?:['"]([A-Za-z_$][A-Za-z0-9_$-]*)['"]|([A-Za-z_$][A-Za-z0-9_$-]*))\s*:/g;
+  const methodPattern =
+    /(?:^|\n|,)\s*([A-Za-z_$][A-Za-z0-9_$-]*)\s*\([^)]*\)\s*\{/g;
+  const shorthandPattern = /(?:^|\n|,)\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*(?=,|$)/g;
+
+  for (const match of objectBody.matchAll(propertyPattern)) {
+    helpers.add(match[1] ?? match[2]);
+  }
+
+  for (const match of objectBody.matchAll(methodPattern)) {
+    helpers.add(match[1]);
+  }
+
+  for (const match of objectBody.matchAll(shorthandPattern)) {
+    const name = match[1];
+    if (!['async', 'get', 'set'].includes(name)) {
+      helpers.add(name);
+    }
+  }
+
+  return Array.from(helpers);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export async function extractRegisteredPartialsFromFile(
@@ -474,6 +993,7 @@ export async function refreshWorkspaceIndex(
   gitignorePatternCache.clear();
 
   workspaceIndex.helpers.clear();
+  workspaceIndex.helperFilesByName.clear();
   workspaceIndex.partials.clear();
   workspaceIndex.partialFilesByName.clear();
   workspaceIndex.partialSourcesByName.clear();
@@ -503,7 +1023,7 @@ export async function refreshWorkspaceIndex(
         scanLimits,
         refreshStats,
       )) {
-        workspaceIndex.helpers.add(helper);
+        addIndexedHelper(workspaceIndex, helper, filePath);
       }
 
       for (const partial of await extractRegisteredPartialsFromFile(
@@ -565,6 +1085,19 @@ export async function refreshWorkspaceIndex(
   );
 
   return refreshStats;
+}
+
+function addIndexedHelper(
+  workspaceIndex: WorkspaceIndex,
+  helper: string,
+  filePath: string,
+): void {
+  workspaceIndex.helpers.add(helper);
+  const existing = workspaceIndex.helperFilesByName.get(helper) ?? [];
+  if (!existing.includes(filePath)) {
+    existing.push(filePath);
+    workspaceIndex.helperFilesByName.set(helper, existing);
+  }
 }
 
 function addIndexedPartial(

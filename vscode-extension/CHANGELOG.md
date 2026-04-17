@@ -2,6 +2,16 @@
 
 All notable changes to the `hbs-lsp` VS Code extension will be documented in this file.
 
+## [0.1.4] - 2026-04-16
+
+### Added
+- Added helper go-to-definition support for indexed helpers in Handlebars templates.
+- Added helper indexing support for Express Handlebars helper bags, including common CommonJS exports and imported helper modules.
+- Added helper indexing support for common spread-based helper composition patterns.
+
+### Changed
+- Improved helper definition resolution so indexed helpers jump to their source modules more reliably in real Express Handlebars projects.
+
 ## [0.1.3] - 2026-04-16
 
 ### Added

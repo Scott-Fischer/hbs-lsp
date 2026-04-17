@@ -186,6 +186,7 @@ describe('refreshWorkspaceIndex', () => {
 
     const workspaceIndex: WorkspaceIndex = {
       helpers: new Set(),
+      helperFilesByName: new Map(),
       partials: new Set(),
       partialFilesByName: new Map(),
       partialSourcesByName: new Map(),
@@ -219,6 +220,7 @@ describe('refreshWorkspaceIndex', () => {
 
     const workspaceIndex: WorkspaceIndex = {
       helpers: new Set(),
+      helperFilesByName: new Map(),
       partials: new Set(),
       partialFilesByName: new Map(),
       partialSourcesByName: new Map(),
@@ -259,6 +261,7 @@ describe('refreshWorkspaceIndex', () => {
 
     const workspaceIndex: WorkspaceIndex = {
       helpers: new Set(),
+      helperFilesByName: new Map(),
       partials: new Set(),
       partialFilesByName: new Map(),
       partialSourcesByName: new Map(),
@@ -291,6 +294,7 @@ describe('refreshWorkspaceIndex', () => {
 
     const workspaceIndex: WorkspaceIndex = {
       helpers: new Set(),
+      helperFilesByName: new Map(),
       partials: new Set(),
       partialFilesByName: new Map(),
       partialSourcesByName: new Map(),
@@ -321,6 +325,7 @@ describe('refreshWorkspaceIndex', () => {
 
     const workspaceIndex: WorkspaceIndex = {
       helpers: new Set(),
+      helperFilesByName: new Map(),
       partials: new Set(),
       partialFilesByName: new Map(),
       partialSourcesByName: new Map(),
@@ -438,6 +443,188 @@ describe('extractHelpersFromFile', () => {
     expect(helpers).toContain('myHelper');
   });
 
+  it('extracts inline ExpressHandlebars helpers objects', async () => {
+    const filePath = await writeTmpFile(
+      'express-inline.ts',
+      `
+      const engine = new ExpressHandlebars({
+        helpers: {
+          formatDate(value) { return value; },
+          uppercase: (value) => value,
+          lowercase,
+        },
+      });
+    `,
+    );
+    const helpers = await extractHelpersFromFile(filePath);
+    expect(helpers).toEqual(
+      expect.arrayContaining(['formatDate', 'uppercase', 'lowercase']),
+    );
+  });
+
+  it('extracts ExpressHandlebars helpers variables used in config', async () => {
+    const filePath = await writeTmpFile(
+      'express-variable.ts',
+      `
+      const helpers = {
+        formatDate,
+        uppercase: (value) => value,
+        lowercase(value) { return value; },
+      };
+
+      const expressHandlebars = new ExpressHandlebars({
+        helpers,
+        partialsDir: ['./server/views/partials'],
+      });
+    `,
+    );
+    const helpers = await extractHelpersFromFile(filePath);
+    expect(helpers).toEqual(
+      expect.arrayContaining(['formatDate', 'uppercase', 'lowercase']),
+    );
+  });
+
+  it('extracts exported helper bags from helper modules', async () => {
+    const filePath = await writeTmpFile(
+      'helpers-export.ts',
+      `
+      export const helpers = {
+        formatDate,
+        uppercase: (value) => value,
+        lowercase(value) { return value; },
+      };
+      `,
+    );
+    const helpers = await extractHelpersFromFile(filePath);
+    expect(helpers).toEqual(
+      expect.arrayContaining(['formatDate', 'uppercase', 'lowercase']),
+    );
+  });
+
+  it('extracts default-exported helper bags from helper modules', async () => {
+    const filePath = await writeTmpFile(
+      'helpers-default.ts',
+      `
+      const helpers = {
+        formatDate,
+        uppercase: (value) => value,
+      };
+
+      export default helpers;
+      `,
+    );
+    const helpers = await extractHelpersFromFile(filePath);
+    expect(helpers).toEqual(
+      expect.arrayContaining(['formatDate', 'uppercase']),
+    );
+  });
+
+  it('extracts CommonJS module.exports helper bags', async () => {
+    const filePath = await writeTmpFile(
+      'helpers-commonjs.js',
+      `
+      module.exports = {
+        formatDate(value) { return value; },
+        uppercase: (value) => value,
+        lowercase,
+      };
+      `,
+    );
+    const helpers = await extractHelpersFromFile(filePath);
+    expect(helpers).toEqual(
+      expect.arrayContaining(['formatDate', 'uppercase', 'lowercase']),
+    );
+  });
+
+  it('extracts CommonJS module.exports assigned helper variables', async () => {
+    const filePath = await writeTmpFile(
+      'helpers-commonjs-variable.js',
+      `
+      const helpers = {
+        formatDate,
+        uppercase: (value) => value,
+      };
+
+      module.exports = helpers;
+      `,
+    );
+    const helpers = await extractHelpersFromFile(filePath);
+    expect(helpers).toEqual(
+      expect.arrayContaining(['formatDate', 'uppercase']),
+    );
+  });
+
+  it('extracts helpers from same-file spread helper bags', async () => {
+    const filePath = await writeTmpFile(
+      'helpers-spread-local.js',
+      `
+      const extraHelpers = {
+        formatDate,
+        uppercase: (value) => value,
+      };
+
+      module.exports = {
+        headline,
+        ...extraHelpers,
+      };
+      `,
+    );
+    const helpers = await extractHelpersFromFile(filePath);
+    expect(helpers).toEqual(
+      expect.arrayContaining(['headline', 'formatDate', 'uppercase']),
+    );
+  });
+
+  it('extracts helpers from imported spread helper bags', async () => {
+    await writeTmpFile(
+      'shared-helpers.js',
+      `
+      module.exports = {
+        formatDate,
+        uppercase: (value) => value,
+      };
+      `,
+    );
+    const filePath = await writeTmpFile(
+      'helpers-spread-import.js',
+      `
+      const sharedHelpers = require('./shared-helpers');
+
+      module.exports = {
+        headline,
+        ...sharedHelpers,
+      };
+      `,
+    );
+    const helpers = await extractHelpersFromFile(filePath);
+    expect(helpers).toEqual(
+      expect.arrayContaining(['headline', 'formatDate', 'uppercase']),
+    );
+  });
+
+  it('extracts helpers from spread factory functions that return string lists', async () => {
+    const filePath = await writeTmpFile(
+      'helpers-spread-factory.js',
+      `
+      const buildHelpers = () => ['formatDate', 'uppercase', 'headline'];
+
+      module.exports = {
+        feature,
+        ...buildHelpers(),
+      };
+      `,
+    );
+    const helpers = await extractHelpersFromFile(filePath);
+    expect(helpers).toEqual(
+      expect.arrayContaining([
+        'feature',
+        'formatDate',
+        'uppercase',
+        'headline',
+      ]),
+    );
+  });
+
   it('returns empty for non-JS files', async () => {
     const filePath = await writeTmpFile(
       'template.hbs',
@@ -497,6 +684,7 @@ describe('refreshWorkspaceIndex cache bounding', () => {
   function makeIndex(): WorkspaceIndex {
     return {
       helpers: new Set(),
+      helperFilesByName: new Map(),
       partials: new Set(),
       partialFilesByName: new Map(),
       partialSourcesByName: new Map(),
@@ -515,6 +703,7 @@ describe('refreshWorkspaceIndex cache bounding', () => {
     const index = makeIndex();
     await refreshWorkspaceIndex(index, [tmpDir]);
     expect(index.helpers.has('myHelper')).toBe(true);
+    expect(index.helperFilesByName.get('myHelper')).toEqual([helperFile]);
 
     await rm(helperFile);
 
