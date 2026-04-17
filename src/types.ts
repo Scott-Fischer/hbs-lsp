@@ -52,6 +52,7 @@ export type WorkspaceIndexRefreshStats = {
 
 export type WorkspaceIndex = {
   helpers: Set<string>;
+  helperFilesByName: Map<string, string[]>;
   partials: Set<string>;
   partialFilesByName: Map<string, string[]>;
   partialSourcesByName: Map<string, IndexedPartialSource[]>;

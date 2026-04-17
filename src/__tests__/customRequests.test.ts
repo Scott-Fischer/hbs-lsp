@@ -18,6 +18,7 @@ describe('registerCustomRequestHandlers', () => {
     const workspaceRoot = '/tmp/workspace-root';
     const workspaceIndex: WorkspaceIndex = {
       helpers: new Set(['if', 'helperA']),
+      helperFilesByName: new Map<string, string[]>(),
       partials: new Set(['x/foo']),
       partialFilesByName: new Map([
         ['x/foo', [`${workspaceRoot}/partials/x/foo.hbs`]],
