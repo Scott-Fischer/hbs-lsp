@@ -1,52 +1,60 @@
-# hbs-lsp VS Code extension
+# hbs-lsp for VS Code
 
-VS Code extension for the `hbs-lsp` Handlebars language server.
+`hbs-lsp` brings Handlebars language server support to VS Code for non-Ember projects such as Express, Fastify, Eleventy, and custom Node applications.
 
 ## Features
 
-- Handlebars diagnostics
-- completions, hover, document symbols, and folding
+- syntax diagnostics
+- completions for common Handlebars patterns
+- hover information for helpers and partials
 - formatting
 - semantic tokens
+- document symbols and folding ranges
 - workspace indexing for helpers and partials
 
-## Development
+## Getting started
 
-```bash
-npm install
-cd vscode-extension
-npm install
-npm run build
-```
+1. Install the extension.
+2. Open a workspace containing `.hbs` or `.handlebars` files.
+3. Open a Handlebars file to start the language server.
 
-The extension build compiles the root language server, bundles it into `vscode-extension/server/`, and compiles the VS Code client into `vscode-extension/dist/`.
+The extension bundles the language server, so no separate global `npm install` is required.
 
-To run the extension locally, open `vscode-extension/` in VS Code and run **Run Extension**.
+## Commands
 
-## Packaging
+The extension contributes these commands:
 
-```bash
-npm run package
-```
+- `hbs-lsp: Show Index`
+- `hbs-lsp: Reindex Workspace`
+- `hbs-lsp: Show Output`
+- `hbs-lsp: Restart Server`
 
-That creates a `.vsix` file in `vscode-extension/`.
+## Configuration
 
-## Publishing
+Settings are available under the `handlebars.*` namespace in VS Code settings.
 
-Before publishing, update the `publisher` field in `vscode-extension/package.json`.
+Common settings include:
 
-### VS Code Marketplace
+- `handlebars.indentSize`
+- `handlebars.enableDiagnostics`
+- `handlebars.enableFormatting`
+- `handlebars.indexWorkspaceSymbols`
+- `handlebars.helpers`
+- `handlebars.partials`
+- `handlebars.partialRoots`
 
-```bash
-npm run publish:vsce
-```
+## Notes
 
-Requires a `VSCE_PAT` or an existing `vsce` login.
+- Workspace indexing runs on startup and when you manually reindex.
+- The server is bundled inside the extension package.
 
-### Open VSX
+## Troubleshooting
 
-```bash
-npm run publish:ovsx
-```
+If the extension is not behaving as expected:
 
-Requires an `OVSX_PAT` or an existing `ovsx` login.
+- run `hbs-lsp: Show Output` to inspect server logs and request errors
+- run `hbs-lsp: Restart Server` after changing settings or if the server seems stuck
+- run `hbs-lsp: Reindex Workspace` if helpers or partials are missing
+- make sure your files use the `.hbs` or `.handlebars` extension
+
+See [CHANGELOG.md](./CHANGELOG.md) for release history.

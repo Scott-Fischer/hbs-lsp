@@ -38,8 +38,54 @@ type WorkspaceIndexResponse = {
 
 let client: LanguageClient | undefined;
 let outputChannel: vscode.OutputChannel | undefined;
+let currentExtensionContext: vscode.ExtensionContext | undefined;
 
 export async function activate(
+  context: vscode.ExtensionContext,
+): Promise<void> {
+  currentExtensionContext = context;
+  outputChannel = vscode.window.createOutputChannel('hbs-lsp');
+  context.subscriptions.push(outputChannel);
+
+  await startClient(context);
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('hbs-lsp.showIndex', async () => {
+      const index = await requestWorkspaceIndex('handlebars/index');
+      if (!index) {
+        return;
+      }
+      showWorkspaceIndex(index, 'Current hbs-lsp workspace index');
+    }),
+    vscode.commands.registerCommand('hbs-lsp.reindexWorkspace', async () => {
+      const index = await requestWorkspaceIndex('handlebars/reindex');
+      if (!index) {
+        return;
+      }
+      showWorkspaceIndex(index, 'Refreshed hbs-lsp workspace index');
+      void vscode.window.showInformationMessage(
+        `hbs-lsp reindexed ${index.partials.length} partial(s) and ${index.helpers.length} helper(s).`,
+      );
+    }),
+    vscode.commands.registerCommand('hbs-lsp.showOutput', () => {
+      outputChannel?.show(true);
+    }),
+    vscode.commands.registerCommand('hbs-lsp.restartServer', async () => {
+      try {
+        await restartClient();
+        void vscode.window.showInformationMessage('hbs-lsp server restarted.');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        outputChannel?.appendLine(`[error] restart failed: ${message}`);
+        void vscode.window.showErrorMessage(
+          `hbs-lsp restart failed: ${message}`,
+        );
+      }
+    }),
+  );
+}
+
+async function startClient(
   context: vscode.ExtensionContext,
 ): Promise<void> {
   const serverPath = path.resolve(
@@ -48,9 +94,6 @@ export async function activate(
     'dist',
     'server.js',
   );
-
-  outputChannel = vscode.window.createOutputChannel('hbs-lsp');
-  context.subscriptions.push(outputChannel);
 
   const serverOptions: ServerOptions = {
     run: {
@@ -83,27 +126,20 @@ export async function activate(
     clientOptions,
   );
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand('hbs-lsp.showIndex', async () => {
-      const index = await requestWorkspaceIndex('handlebars/index');
-      if (!index) {
-        return;
-      }
-      showWorkspaceIndex(index, 'Current hbs-lsp workspace index');
-    }),
-    vscode.commands.registerCommand('hbs-lsp.reindexWorkspace', async () => {
-      const index = await requestWorkspaceIndex('handlebars/reindex');
-      if (!index) {
-        return;
-      }
-      showWorkspaceIndex(index, 'Refreshed hbs-lsp workspace index');
-      void vscode.window.showInformationMessage(
-        `hbs-lsp reindexed ${index.partials.length} partial(s) and ${index.helpers.length} helper(s).`,
-      );
-    }),
-  );
-
   await client.start();
+}
+
+async function restartClient(): Promise<void> {
+  if (client) {
+    await client.stop();
+    client = undefined;
+  }
+
+  if (!currentExtensionContext) {
+    throw new Error('Extension context is unavailable.');
+  }
+
+  await startClient(currentExtensionContext);
 }
 
 async function requestWorkspaceIndex(
