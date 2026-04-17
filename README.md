@@ -28,10 +28,11 @@ Use `hbs-lsp` if you want a Handlebars language server for:
 - **Hover** — documentation for configured helpers and partials
 - **Formatting** — AST-aware template formatting for nested blocks and `else` chains, with a regex fallback for malformed templates
 - **Semantic tokens** — syntax highlighting for comments, helpers, partials, variables, strings, and Handlebars operators
-- **Workspace indexing** — discovers helpers from `registerHelper()` calls in JS/TS files and partials from `.hbs`/`.handlebars` files, with common generated/dependency directories and simple root-level `.gitignore` rules honored during scanning
+- **Workspace indexing** — discovers helpers from common helper registration/export patterns in JS/TS files, including Express Handlebars helper bags and common spread-based helper composition, plus partials from `.hbs`/`.handlebars` files, with common generated/dependency directories and simple root-level `.gitignore` rules honored during scanning
 - **Document symbols** — hierarchical outlines for block helpers and nested sections
 - **Folding ranges** — collapsible regions for matched block sections
 - **Quick fixes** — auto-fix missing closing tags, rename mismatched closing tags, remove stray `else`/closing tags, reindent templates
+- **Go to definition** — jump to indexed partial files and indexed helper definitions
 - **Custom requests** — `handlebars/ast`, `handlebars/index`, `handlebars/reindex` for programmatic access
 
 ## Install
@@ -92,26 +93,15 @@ lspconfig.hbs_lsp.setup({})
 
 ### VS Code
 
-The recommended setup is the dedicated VS Code extension in [`vscode-extension/`](vscode-extension). It bundles the language server, so users do not need a separate global `npm install` once the extension is published.
+The recommended setup is the dedicated VS Code extension. Install `hbs-lsp` from the VS Code Marketplace and open a `.hbs` or `.handlebars` file to start the bundled language server.
 
-For now, you can build and run it locally:
+Useful extension commands:
 
-```bash
-npm install
-cd vscode-extension
-npm install
-npm run build
-code .
-```
+- `hbs-lsp: Reindex Workspace`
+- `hbs-lsp: Show Output`
+- `hbs-lsp: Restart Server`
 
-Then open the `vscode-extension/` folder in VS Code and run the **Run Extension** launch configuration (or press `F5`). The extension starts its bundled `server/dist/server.js` over stdio and forwards the `handlebars.*` workspace settings to the server.
-
-To package the extension for installation or publishing:
-
-```bash
-cd vscode-extension
-npm run package
-```
+For local extension development, see [`vscode-extension/`](vscode-extension).
 
 ### VS Code (generic LSP client)
 
@@ -125,6 +115,20 @@ If you prefer using a generic LSP client extension such as [vscode-glspc](https:
 }
 ```
 
+
+### Development
+
+For local development of the dedicated VS Code extension:
+
+```bash
+npm install
+cd vscode-extension
+npm install
+npm run build
+code .
+```
+
+Then open the `vscode-extension/` folder in VS Code and run the **Run Extension** launch configuration (or press `F5`). For extension packaging and publishing details, see [`vscode-extension/`](vscode-extension).
 
 ### Helix
 
@@ -262,7 +266,9 @@ The scanner skips common dependency/build directories such as `node_modules`, `.
 When `indexWorkspaceSymbols` is enabled, the server scans workspace folders for:
 
 - **Partials** — `.hbs` and `.handlebars` files (names inferred from file paths, with special handling for `partials/`, `templates/`, and `views/` directories), plus JS/TS `registerPartial("name", ...)` and `registerPartial({ name: ... })` patterns
-- **Helpers** — JS/TS files containing `registerHelper("name")`, `helper("name")`, or `export const name = helper(` patterns
+- **Helpers** — JS/TS files containing `registerHelper("name")`, `helper("name")`, `export const name = helper(`, Express Handlebars `helpers` bags, CommonJS `module.exports` helper objects, and common spread-based helper composition patterns
+
+Helper discovery is static and pattern-based. Common real-world Express Handlebars setups are supported, but highly dynamic runtime-generated helper bags may still require manual `handlebars.helpers` configuration.
 
 Very large source files are skipped during helper/partial scanning to keep indexing responsive, and unchanged helper files reuse cached extraction results across reindex runs.
 
