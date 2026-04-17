@@ -616,7 +616,12 @@ describe('extractHelpersFromFile', () => {
     );
     const helpers = await extractHelpersFromFile(filePath);
     expect(helpers).toEqual(
-      expect.arrayContaining(['feature', 'formatDate', 'uppercase', 'headline']),
+      expect.arrayContaining([
+        'feature',
+        'formatDate',
+        'uppercase',
+        'headline',
+      ]),
     );
   });
 

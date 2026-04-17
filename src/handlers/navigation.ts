@@ -214,13 +214,20 @@ async function readTargetSelectionRange(filePath: string): Promise<Range> {
   }
 }
 
-function rangeFromTextOffset(text: string, index: number, length: number): Range {
+function rangeFromTextOffset(
+  text: string,
+  index: number,
+  length: number,
+): Range {
   const start = positionAtOffset(text, index);
   const end = positionAtOffset(text, index + length);
   return { start, end };
 }
 
-function positionAtOffset(text: string, offset: number): { line: number; character: number } {
+function positionAtOffset(
+  text: string,
+  offset: number,
+): { line: number; character: number } {
   const clampedOffset = Math.max(0, Math.min(offset, text.length));
   const before = text.slice(0, clampedOffset);
   const lines = before.split(/\r?\n/);

@@ -417,16 +417,14 @@ async function extractHelpersFromFileInternal(
     helpers.add(helper);
   }
 
-  for (
-    const helper of await extractSpreadHelpersFromFile(
-      filePath,
-      content,
-      logger,
-      scanLimits,
-      refreshStats,
-      visitedFiles,
-    )
-  ) {
+  for (const helper of await extractSpreadHelpersFromFile(
+    filePath,
+    content,
+    logger,
+    scanLimits,
+    refreshStats,
+    visitedFiles,
+  )) {
     helpers.add(helper);
   }
 
@@ -474,7 +472,10 @@ function extractExpressHandlebarsHelpers(content: string): string[] {
   }
 
   for (const variableName of extractHelpersOptionVariableNames(content)) {
-    for (const objectBody of extractNamedObjectAssignments(content, variableName)) {
+    for (const objectBody of extractNamedObjectAssignments(
+      content,
+      variableName,
+    )) {
       for (const helper of extractHelperNamesFromObjectBody(objectBody)) {
         helpers.add(helper);
       }
@@ -503,7 +504,9 @@ function extractHelpersOptionVariableNames(content: string): string[] {
   const variableNames = new Set<string>();
 
   for (const objectBody of extractExpressHandlebarsConfigBodies(content)) {
-    for (const match of objectBody.matchAll(/\bhelpers\s*:\s*([A-Za-z_$][A-Za-z0-9_$]*)/g)) {
+    for (const match of objectBody.matchAll(
+      /\bhelpers\s*:\s*([A-Za-z_$][A-Za-z0-9_$]*)/g,
+    )) {
       variableNames.add(match[1]);
     }
 
@@ -546,7 +549,10 @@ function extractNamedExportedHelperObjects(content: string): string[] {
         .split(/\s+as\s+/i)
         .map((value) => value.trim());
       if ((exportedName ?? localName) === 'helpers' && localName) {
-        for (const objectBody of extractNamedObjectAssignments(content, localName)) {
+        for (const objectBody of extractNamedObjectAssignments(
+          content,
+          localName,
+        )) {
           objectBodies.push(objectBody);
         }
       }
@@ -568,9 +574,14 @@ function extractDefaultExportedHelperObjects(content: string): string[] {
     }
   }
 
-  for (const match of content.matchAll(/export\s+default\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*;/g)) {
+  for (const match of content.matchAll(
+    /export\s+default\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*;/g,
+  )) {
     const exportedName = match[1];
-    for (const objectBody of extractNamedObjectAssignments(content, exportedName)) {
+    for (const objectBody of extractNamedObjectAssignments(
+      content,
+      exportedName,
+    )) {
       objectBodies.push(objectBody);
     }
   }
@@ -594,7 +605,10 @@ function extractCommonJsExportedHelperObjects(content: string): string[] {
     /module\.exports\s*=\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*;/g,
   )) {
     const exportedName = match[1];
-    for (const objectBody of extractNamedObjectAssignments(content, exportedName)) {
+    for (const objectBody of extractNamedObjectAssignments(
+      content,
+      exportedName,
+    )) {
       objectBodies.push(objectBody);
     }
   }
@@ -610,7 +624,10 @@ function extractCommonJsExportedHelperObjects(content: string): string[] {
   return objectBodies;
 }
 
-function extractNamedObjectAssignments(content: string, variableName: string): string[] {
+function extractNamedObjectAssignments(
+  content: string,
+  variableName: string,
+): string[] {
   const objectBodies: string[] = [];
   const variablePattern = new RegExp(
     String.raw`(?:export\s+)?(?:const|let|var)\s+${escapeRegExp(variableName)}\s*=\s*\{`,
@@ -628,7 +645,10 @@ function extractNamedObjectAssignments(content: string, variableName: string): s
   return objectBodies;
 }
 
-function readBalancedObjectBody(content: string, openingBraceIndex: number): string | null {
+function readBalancedObjectBody(
+  content: string,
+  openingBraceIndex: number,
+): string | null {
   let depth = 0;
 
   for (let index = openingBraceIndex; index < content.length; index += 1) {
@@ -665,7 +685,9 @@ async function extractSpreadHelpersFromFile(
     ...extractCommonJsExportedHelperObjects(content),
     ...extractInlineHelpersOptionObjects(content),
   ]) {
-    for (const spreadName of extractSpreadReferencesFromObjectBody(objectBody)) {
+    for (const spreadName of extractSpreadReferencesFromObjectBody(
+      objectBody,
+    )) {
       for (const helper of await resolveSpreadReferenceHelpers(
         filePath,
         content,
@@ -681,8 +703,13 @@ async function extractSpreadHelpersFromFile(
   }
 
   for (const variableName of extractHelpersOptionVariableNames(content)) {
-    for (const objectBody of extractNamedObjectAssignments(content, variableName)) {
-      for (const spreadName of extractSpreadReferencesFromObjectBody(objectBody)) {
+    for (const objectBody of extractNamedObjectAssignments(
+      content,
+      variableName,
+    )) {
+      for (const spreadName of extractSpreadReferencesFromObjectBody(
+        objectBody,
+      )) {
         for (const helper of await resolveSpreadReferenceHelpers(
           filePath,
           content,
@@ -719,21 +746,26 @@ async function resolveSpreadReferenceHelpers(
     }
   }
 
-  for (const helper of extractHelperNamesFromFactoryFunction(content, localName)) {
+  for (const helper of extractHelperNamesFromFactoryFunction(
+    content,
+    localName,
+  )) {
     helpers.add(helper);
   }
 
-  const importedModulePath = await resolveImportedModulePath(filePath, content, localName);
+  const importedModulePath = await resolveImportedModulePath(
+    filePath,
+    content,
+    localName,
+  );
   if (importedModulePath) {
-    for (
-      const helper of await extractHelpersFromFileInternal(
-        importedModulePath,
-        logger,
-        scanLimits,
-        refreshStats,
-        visitedFiles,
-      )
-    ) {
+    for (const helper of await extractHelpersFromFileInternal(
+      importedModulePath,
+      logger,
+      scanLimits,
+      refreshStats,
+      visitedFiles,
+    )) {
       helpers.add(helper);
     }
   }
@@ -771,12 +803,17 @@ function extractHelperNamesFromFactoryFunction(
   for (const pattern of patterns) {
     for (const match of content.matchAll(pattern)) {
       const body = match[1] ?? '';
-      for (const stringMatch of body.matchAll(/['"]([A-Za-z_$][A-Za-z0-9_$-]*)['"]/g)) {
+      for (const stringMatch of body.matchAll(
+        /['"]([A-Za-z_$][A-Za-z0-9_$-]*)['"]/g,
+      )) {
         helpers.add(stringMatch[1]);
       }
       const returnObjectMatch = body.match(/return\s*\{/);
       if (returnObjectMatch?.index !== undefined) {
-        const openingBraceIndex = (match.index ?? 0) + returnObjectMatch.index + returnObjectMatch[0].lastIndexOf('{');
+        const openingBraceIndex =
+          (match.index ?? 0) +
+          returnObjectMatch.index +
+          returnObjectMatch[0].lastIndexOf('{');
         const objectBody = readBalancedObjectBody(content, openingBraceIndex);
         if (objectBody !== null) {
           for (const helper of extractHelperNamesFromObjectBody(objectBody)) {
@@ -855,8 +892,7 @@ function extractHelperNamesFromObjectBody(objectBody: string): string[] {
     /(?:^|\n|,)\s*(?:['"]([A-Za-z_$][A-Za-z0-9_$-]*)['"]|([A-Za-z_$][A-Za-z0-9_$-]*))\s*:/g;
   const methodPattern =
     /(?:^|\n|,)\s*([A-Za-z_$][A-Za-z0-9_$-]*)\s*\([^)]*\)\s*\{/g;
-  const shorthandPattern =
-    /(?:^|\n|,)\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*(?=,|$)/g;
+  const shorthandPattern = /(?:^|\n|,)\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*(?=,|$)/g;
 
   for (const match of objectBody.matchAll(propertyPattern)) {
     helpers.add(match[1] ?? match[2]);

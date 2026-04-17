@@ -530,7 +530,7 @@ describe('LSP Integration', () => {
     await mkdir(path.dirname(helperPath), { recursive: true });
     await writeFile(
       helperPath,
-      "export const formatDate = helper(function formatDate() {});\n",
+      'export const formatDate = helper(function formatDate() {});\n',
       'utf8',
     );
 
@@ -610,7 +610,11 @@ describe('LSP Integration', () => {
 
   it('resolves spread-imported helper definitions to indexed source files', async () => {
     const sharedPath = path.join(tmpRoot, 'src', 'shared-helpers.js');
-    const helperModulePath = path.join(tmpRoot, 'src', 'helpers-with-spread.js');
+    const helperModulePath = path.join(
+      tmpRoot,
+      'src',
+      'helpers-with-spread.js',
+    );
     const enginePath = path.join(tmpRoot, 'src', 'engine-spread.js');
     await mkdir(path.dirname(sharedPath), { recursive: true });
     await writeFile(
