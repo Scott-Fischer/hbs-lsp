@@ -158,6 +158,8 @@ export function computeSemanticTokens(
       );
     }
 
+    // TODO: Many themes render operators in an error-like color, which makes
+    // valid partial invocations look like syntax errors.
     if (token.type === 'partial') {
       const rawAfterOpen = token.raw.startsWith('{{~')
         ? token.raw.slice(3)
