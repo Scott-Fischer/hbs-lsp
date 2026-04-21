@@ -71,7 +71,7 @@ export function registerHoverHandler({
     }
 
     if (
-      token?.type === 'partial' &&
+      isPartialReferenceToken(token) &&
       extractInlinePartialDefinitions(text).some(
         (candidate) => candidate.name === word,
       )
@@ -84,7 +84,7 @@ export function registerHoverHandler({
       };
     }
 
-    if (token?.type === 'partial') {
+    if (isPartialReferenceToken(token)) {
       return {
         contents: {
           kind: MarkupKind.Markdown,
@@ -113,4 +113,13 @@ export function registerHoverHandler({
 
     return null;
   });
+}
+
+function isPartialReferenceToken(
+  token: { type: string; raw: string } | undefined,
+): boolean {
+  return token
+    ? token.type === 'partial' ||
+        (token.type === 'block-open' && /^{{~?#>/.test(token.raw))
+    : false;
 }

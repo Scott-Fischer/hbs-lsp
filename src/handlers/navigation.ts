@@ -96,7 +96,7 @@ export function registerNavigationHandlers({
         );
       }
 
-      if (token.type !== 'partial') {
+      if (!isPartialReferenceToken(token)) {
         return null;
       }
 
@@ -240,6 +240,20 @@ function positionAtOffset(
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function isPartialReferenceToken(token: {
+  type: string;
+  raw: string;
+}): boolean {
+  return token.type === 'partial' || isPartialBlockOpenToken(token);
+}
+
+function isPartialBlockOpenToken(token: {
+  type: string;
+  raw: string;
+}): boolean {
+  return token.type === 'block-open' && /^{{~?#>/.test(token.raw);
 }
 
 function zeroRange(): Range {

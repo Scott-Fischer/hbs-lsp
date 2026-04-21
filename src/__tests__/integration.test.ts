@@ -503,6 +503,43 @@ describe('LSP Integration', () => {
     );
   });
 
+  it('resolves partial block definitions to indexed files', async () => {
+    const partialPath = path.join(
+      tmpRoot,
+      'x',
+      'components',
+      'foo',
+      'partials',
+      'bar.hbs',
+    );
+    await mkdir(path.dirname(partialPath), { recursive: true });
+    await writeFile(partialPath, '<div>Example</div>', 'utf8');
+
+    await connection.sendRequest('handlebars/reindex');
+
+    const uri = 'file:///tmp/hbs-lsp-test/definition-partial-block.hbs';
+    openDocument(connection, uri, '{{#> foo/partials/bar}}x{{/foo/partials/bar}}');
+    await new Promise((r) => setTimeout(r, 100));
+
+    const result = await connection.sendRequest<Definition | null>(
+      'textDocument/definition',
+      {
+        textDocument: { uri },
+        position: { line: 0, character: 15 },
+      },
+    );
+
+    expect(Array.isArray(result)).toBe(true);
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          targetUri:
+            'file:///tmp/hbs-lsp-test/x/components/foo/partials/bar.hbs',
+        }),
+      ]),
+    );
+  });
+
   it('resolves inline partial definitions within the same document', async () => {
     const uri = 'file:///tmp/hbs-lsp-test/definition-inline.hbs';
     openDocument(
