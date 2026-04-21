@@ -953,27 +953,170 @@ async function resolveModuleFilePath(
 function extractHelperNamesFromObjectBody(objectBody: string): string[] {
   const helpers = new Set<string>();
   const propertyPattern =
-    /(?:^|\n|,)\s*(?:['"]([A-Za-z_$][A-Za-z0-9_$-]*)['"]|([A-Za-z_$][A-Za-z0-9_$-]*))\s*:/g;
+    /^(?:['"]([A-Za-z_$][A-Za-z0-9_$-]*)['"]|([A-Za-z_$][A-Za-z0-9_$-]*))\s*:/;
   const methodPattern =
-    /(?:^|\n|,)\s*([A-Za-z_$][A-Za-z0-9_$-]*)\s*\([^)]*\)\s*\{/g;
-  const shorthandPattern = /(?:^|\n|,)\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*(?=,|$)/g;
+    /^(?:async\s+)?([A-Za-z_$][A-Za-z0-9_$-]*)\s*\([^)]*\)\s*\{/;
+  const shorthandPattern = /^([A-Za-z_$][A-Za-z0-9_$]*)$/;
 
-  for (const match of objectBody.matchAll(propertyPattern)) {
-    helpers.add(match[1] ?? match[2]);
-  }
+  for (const entry of extractTopLevelObjectEntries(objectBody)) {
+    const trimmedEntry = entry.trim();
+    if (!trimmedEntry) {
+      continue;
+    }
 
-  for (const match of objectBody.matchAll(methodPattern)) {
-    helpers.add(match[1]);
-  }
+    const propertyMatch = trimmedEntry.match(propertyPattern);
+    if (propertyMatch) {
+      helpers.add(propertyMatch[1] ?? propertyMatch[2]);
+      continue;
+    }
 
-  for (const match of objectBody.matchAll(shorthandPattern)) {
-    const name = match[1];
-    if (!['async', 'get', 'set'].includes(name)) {
-      helpers.add(name);
+    const methodMatch = trimmedEntry.match(methodPattern);
+    if (methodMatch) {
+      const name = methodMatch[1];
+      if (!['get', 'set'].includes(name)) {
+        helpers.add(name);
+      }
+      continue;
+    }
+
+    const shorthandMatch = trimmedEntry.match(shorthandPattern);
+    if (shorthandMatch) {
+      const name = shorthandMatch[1];
+      if (!['async', 'get', 'set'].includes(name)) {
+        helpers.add(name);
+      }
     }
   }
 
   return Array.from(helpers);
+}
+
+function extractTopLevelObjectEntries(objectBody: string): string[] {
+  const entries: string[] = [];
+  let current = '';
+  let braceDepth = 0;
+  let bracketDepth = 0;
+  let parenDepth = 0;
+  let stringQuote: '\'' | '"' | '`' | null = null;
+  let escaped = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let index = 0; index < objectBody.length; index += 1) {
+    const char = objectBody[index];
+    const next = objectBody[index + 1];
+
+    if (inLineComment) {
+      current += char;
+      if (char === '\n') {
+        inLineComment = false;
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      current += char;
+      if (char === '*' && next === '/') {
+        current += next;
+        inBlockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+
+    if (stringQuote) {
+      current += char;
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (char === stringQuote) {
+        stringQuote = null;
+      }
+      continue;
+    }
+
+    if (char === '/' && next === '/') {
+      current += char;
+      current += next;
+      inLineComment = true;
+      index += 1;
+      continue;
+    }
+
+    if (char === '/' && next === '*') {
+      current += char;
+      current += next;
+      inBlockComment = true;
+      index += 1;
+      continue;
+    }
+
+    if (char === '\'' || char === '"' || char === '`') {
+      current += char;
+      stringQuote = char;
+      continue;
+    }
+
+    if (char === '{') {
+      braceDepth += 1;
+      current += char;
+      continue;
+    }
+
+    if (char === '}') {
+      braceDepth = Math.max(0, braceDepth - 1);
+      current += char;
+      continue;
+    }
+
+    if (char === '[') {
+      bracketDepth += 1;
+      current += char;
+      continue;
+    }
+
+    if (char === ']') {
+      bracketDepth = Math.max(0, bracketDepth - 1);
+      current += char;
+      continue;
+    }
+
+    if (char === '(') {
+      parenDepth += 1;
+      current += char;
+      continue;
+    }
+
+    if (char === ')') {
+      parenDepth = Math.max(0, parenDepth - 1);
+      current += char;
+      continue;
+    }
+
+    if (
+      char === ',' &&
+      braceDepth === 0 &&
+      bracketDepth === 0 &&
+      parenDepth === 0
+    ) {
+      entries.push(current);
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current.trim().length > 0) {
+    entries.push(current);
+  }
+
+  return entries;
 }
 
 function escapeRegExp(value: string): string {

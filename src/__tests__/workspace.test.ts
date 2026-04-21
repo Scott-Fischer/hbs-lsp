@@ -737,6 +737,31 @@ describe('extractHelpersFromFile', () => {
     expect(helpers).not.toEqual(expect.arrayContaining(['fakeHelper']));
   });
 
+  it('does not extract nested object property names as helpers from exported bags', async () => {
+    const filePath = await writeTmpFile(
+      'helpers-nested-properties.js',
+      `
+      module.exports = {
+        section: {
+          config: {
+            enabled: true,
+            thresholds: {
+              min: 1,
+              max: 3,
+            },
+          },
+        },
+        formatDate,
+      };
+      `,
+    );
+    const helpers = await extractHelpersFromFile(filePath);
+    expect(helpers).toEqual(expect.arrayContaining(['section', 'formatDate']));
+    expect(helpers).not.toEqual(
+      expect.arrayContaining(['config', 'enabled', 'thresholds', 'min', 'max']),
+    );
+  });
+
   it('does not extract fake helper names from commented spreads', async () => {
     const filePath = await writeTmpFile(
       'helpers-commented-spread.js',
