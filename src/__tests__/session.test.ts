@@ -23,7 +23,7 @@ function deferred<T>() {
 }
 
 describe('initializeSession', () => {
-  it('sets configuration capability, deduplicates workspace roots, and applies init options', () => {
+  it('sets client capabilities, deduplicates workspace roots, and applies init options', () => {
     const state = createSessionState();
 
     initializeSession(
@@ -32,6 +32,7 @@ describe('initializeSession', () => {
         capabilities: {
           workspace: {
             configuration: true,
+            workspaceFolders: true,
           },
         },
         workspaceFolders: [
@@ -51,6 +52,7 @@ describe('initializeSession', () => {
     );
 
     expect(state.hasConfigurationCapability).toBe(true);
+    expect(state.hasWorkspaceFolderCapability).toBe(true);
     expect(state.workspaceRoots).toEqual([
       '/tmp/workspace-a',
       '/tmp/workspace-b',
@@ -92,6 +94,7 @@ describe('initializeSession', () => {
     );
 
     expect(state.hasConfigurationCapability).toBe(false);
+    expect(state.hasWorkspaceFolderCapability).toBe(false);
     expect(state.workspaceRoots).toEqual(['/tmp/workspace-c']);
     expect(state.globalSettings.indentSize).toBe(3);
     expect(state.globalSettings.helpers).toEqual([

@@ -21,6 +21,7 @@ import {
 
 export type SessionState = {
   hasConfigurationCapability: boolean;
+  hasWorkspaceFolderCapability: boolean;
   globalSettings: ServerSettings;
   documentSettings: Map<string, Thenable<ServerSettings>>;
   workspaceRoots: string[];
@@ -31,6 +32,7 @@ export type SessionState = {
 export function createSessionState(): SessionState {
   return {
     hasConfigurationCapability: false,
+    hasWorkspaceFolderCapability: false,
     globalSettings: defaultSettings,
     documentSettings: new Map<string, Thenable<ServerSettings>>(),
     workspaceRoots: [],
@@ -51,6 +53,8 @@ export function initializeSession(
 ): void {
   const capabilities = params.capabilities;
   state.hasConfigurationCapability = !!capabilities.workspace?.configuration;
+  state.hasWorkspaceFolderCapability =
+    !!capabilities.workspace?.workspaceFolders;
 
   const legacyRootUri = (params as { rootUri?: string }).rootUri;
   updateWorkspaceRoots(state, [

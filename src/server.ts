@@ -109,6 +109,12 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
         full: true,
         range: false,
       },
+      workspace: {
+        workspaceFolders: {
+          supported: true,
+          changeNotifications: true,
+        },
+      },
     },
   };
 });
@@ -119,7 +125,9 @@ connection.onInitialized(() => {
       DidChangeConfigurationNotification.type,
       undefined,
     );
+  }
 
+  if (session.hasWorkspaceFolderCapability) {
     connection.workspace.onDidChangeWorkspaceFolders(
       (event: WorkspaceFoldersChangeEvent) => {
         for (const folder of event.added) {

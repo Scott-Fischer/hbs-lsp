@@ -201,6 +201,8 @@ describe('LSP Integration', () => {
     expect(caps.codeActionProvider).toBe(true);
     expect(caps.hoverProvider).toBe(true);
     expect(caps.semanticTokensProvider).toBeDefined();
+    expect(caps.workspace?.workspaceFolders?.supported).toBe(true);
+    expect(caps.workspace?.workspaceFolders?.changeNotifications).toBe(true);
   });
 
   // ── Diagnostics ───────────────────────────────────────────
