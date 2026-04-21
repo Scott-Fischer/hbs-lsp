@@ -714,9 +714,62 @@ function readBalancedObjectBody(
   openingBraceIndex: number,
 ): string | null {
   let depth = 0;
+  let stringQuote: "'" | '"' | '`' | null = null;
+  let escaped = false;
+  let inLineComment = false;
+  let inBlockComment = false;
 
   for (let index = openingBraceIndex; index < content.length; index += 1) {
     const char = content[index];
+    const next = content[index + 1];
+
+    if (inLineComment) {
+      if (char === '\n') {
+        inLineComment = false;
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (char === '*' && next === '/') {
+        inBlockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+
+    if (stringQuote) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (char === stringQuote) {
+        stringQuote = null;
+      }
+      continue;
+    }
+
+    if (char === '/' && next === '/') {
+      inLineComment = true;
+      index += 1;
+      continue;
+    }
+
+    if (char === '/' && next === '*') {
+      inBlockComment = true;
+      index += 1;
+      continue;
+    }
+
+    if (char === "'" || char === '"' || char === '`') {
+      stringQuote = char;
+      continue;
+    }
+
     if (char === '{') {
       depth += 1;
       continue;

@@ -762,6 +762,20 @@ describe('extractHelpersFromFile', () => {
     );
   });
 
+  it('continues parsing exported helper bags when strings contain closing braces', async () => {
+    const filePath = await writeTmpFile(
+      'helpers-string-brace.js',
+      `
+      module.exports = {
+        note: '}',
+        formatDate,
+      };
+      `,
+    );
+    const helpers = await extractHelpersFromFile(filePath);
+    expect(helpers).toEqual(expect.arrayContaining(['note', 'formatDate']));
+  });
+
   it('does not extract fake helper names from commented spreads', async () => {
     const filePath = await writeTmpFile(
       'helpers-commented-spread.js',
