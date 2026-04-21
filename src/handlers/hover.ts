@@ -20,10 +20,12 @@ export function registerHoverHandler({
 
     const offset = document.offsetAt(position);
     const text = document.getText();
-    const word = readTokenAt(text, offset);
-    if (!word) {
+    const rawWord = readTokenAt(text, offset);
+    if (!rawWord) {
       return null;
     }
+
+    const word = rawWord.replace(/^\//, '');
 
     const settings = await getDocumentSettings(textDocument.uri);
     const inlinePartials = extractInlinePartialDefinitions(text);
