@@ -5,6 +5,7 @@ import {
   createSessionHelpers,
   createSessionState,
   initializeSession,
+  updateWorkspaceRoots,
 } from '../session.js';
 
 async function flushMicrotasks(): Promise<void> {
@@ -22,7 +23,7 @@ function deferred<T>() {
 }
 
 describe('initializeSession', () => {
-  it('sets configuration capability, deduplicates workspace roots, and applies init options', () => {
+  it('sets client capabilities, deduplicates workspace roots, and applies init options', () => {
     const state = createSessionState();
 
     initializeSession(
@@ -31,6 +32,7 @@ describe('initializeSession', () => {
         capabilities: {
           workspace: {
             configuration: true,
+            workspaceFolders: true,
           },
         },
         workspaceFolders: [
@@ -50,6 +52,7 @@ describe('initializeSession', () => {
     );
 
     expect(state.hasConfigurationCapability).toBe(true);
+    expect(state.hasWorkspaceFolderCapability).toBe(true);
     expect(state.workspaceRoots).toEqual([
       '/tmp/workspace-a',
       '/tmp/workspace-b',
@@ -91,6 +94,7 @@ describe('initializeSession', () => {
     );
 
     expect(state.hasConfigurationCapability).toBe(false);
+    expect(state.hasWorkspaceFolderCapability).toBe(false);
     expect(state.workspaceRoots).toEqual(['/tmp/workspace-c']);
     expect(state.globalSettings.indentSize).toBe(3);
     expect(state.globalSettings.helpers).toEqual([
@@ -107,12 +111,34 @@ describe('initializeSession', () => {
   });
 });
 
+describe('updateWorkspaceRoots', () => {
+  it('replaces roots with valid unique file paths', () => {
+    const state = createSessionState();
+    state.workspaceRoots.push('/tmp/original');
+
+    updateWorkspaceRoots(state, [
+      'file:///tmp/workspace-a',
+      'untitled:invalid',
+      'file:///tmp/workspace-b',
+      'file:///tmp/workspace-a',
+    ]);
+
+    expect(state.workspaceRoots).toEqual([
+      '/tmp/workspace-a',
+      '/tmp/workspace-b',
+    ]);
+  });
+});
+
 describe('createSessionHelpers', () => {
   it('returns cached document settings per resource when configuration capability is enabled', async () => {
     const state = createSessionState();
     state.hasConfigurationCapability = true;
     state.globalSettings = {
       ...state.globalSettings,
+      maxFullAnalysisChars: 1234,
+      helpers: [...state.globalSettings.helpers, 'sampleHelper'],
+      partials: ['card'],
       partialRoots: ['./partials'],
     };
 
@@ -147,7 +173,19 @@ describe('createSessionHelpers', () => {
     expect(first.indentSize).toBe(6);
     expect(second.indentSize).toBe(6);
     expect(third.indentSize).toBe(2);
+    expect(first.helpers).toEqual([
+      'if',
+      'unless',
+      'each',
+      'with',
+      'let',
+      'log',
+      'lookup',
+      'sampleHelper',
+    ]);
+    expect(first.partials).toEqual(['card']);
     expect(first.partialRoots).toEqual(['./partials']);
+    expect(first.maxFullAnalysisChars).toBe(1234);
     expect(getConfigurationCount).toBe(2);
   });
 
@@ -157,7 +195,7 @@ describe('createSessionHelpers', () => {
     state.globalSettings = {
       ...state.globalSettings,
       indentSize: 5,
-      helpers: ['formatDate'],
+      helpers: ['sampleHelper'],
     };
 
     const helpers = createSessionHelpers(
@@ -185,7 +223,7 @@ describe('createSessionHelpers', () => {
       'let',
       'log',
       'lookup',
-      'formatDate',
+      'sampleHelper',
     ]);
   });
 

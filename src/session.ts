@@ -21,6 +21,7 @@ import {
 
 export type SessionState = {
   hasConfigurationCapability: boolean;
+  hasWorkspaceFolderCapability: boolean;
   globalSettings: ServerSettings;
   documentSettings: Map<string, Thenable<ServerSettings>>;
   workspaceRoots: string[];
@@ -31,6 +32,7 @@ export type SessionState = {
 export function createSessionState(): SessionState {
   return {
     hasConfigurationCapability: false,
+    hasWorkspaceFolderCapability: false,
     globalSettings: defaultSettings,
     documentSettings: new Map<string, Thenable<ServerSettings>>(),
     workspaceRoots: [],
@@ -51,19 +53,14 @@ export function initializeSession(
 ): void {
   const capabilities = params.capabilities;
   state.hasConfigurationCapability = !!capabilities.workspace?.configuration;
+  state.hasWorkspaceFolderCapability =
+    !!capabilities.workspace?.workspaceFolders;
 
-  state.workspaceRoots.length = 0;
   const legacyRootUri = (params as { rootUri?: string }).rootUri;
-  const rootCandidates = [
+  updateWorkspaceRoots(state, [
     ...(params.workspaceFolders?.map((folder) => folder.uri) ?? []),
     ...(legacyRootUri ? [legacyRootUri] : []),
-  ];
-  for (const uri of rootCandidates) {
-    const rootPath = fileUriToPath(uri);
-    if (rootPath && !state.workspaceRoots.includes(rootPath)) {
-      state.workspaceRoots.push(rootPath);
-    }
-  }
+  ]);
 
   const init = (params.initializationOptions ?? {}) as Partial<ServerSettings>;
   state.globalSettings = normalizeSettings(
@@ -85,6 +82,20 @@ export function initializeSession(
   configureAnalysisLimits({
     maxFullAnalysisChars: state.globalSettings.maxFullAnalysisChars,
   });
+}
+
+export function updateWorkspaceRoots(
+  state: SessionState,
+  rootUris: string[],
+): void {
+  state.workspaceRoots.length = 0;
+
+  for (const uri of rootUris) {
+    const rootPath = fileUriToPath(uri);
+    if (rootPath && !state.workspaceRoots.includes(rootPath)) {
+      state.workspaceRoots.push(rootPath);
+    }
+  }
 }
 
 export function createSessionHelpers(
@@ -171,19 +182,25 @@ export function createSessionHelpers(
           scopeUri: resource,
           section: 'handlebars',
         })
-        .then((settings) =>
-          normalizeSettings(
+        .then((settings) => {
+          const documentSettings = settings as Partial<ServerSettings>;
+          return normalizeSettings(
             {
-              ...(settings as Partial<ServerSettings>),
-              partialRoots: Array.isArray(
-                (settings as Partial<ServerSettings>).partialRoots,
-              )
-                ? (settings as Partial<ServerSettings>).partialRoots
+              ...state.globalSettings,
+              ...documentSettings,
+              helpers: Array.isArray(documentSettings.helpers)
+                ? documentSettings.helpers
+                : state.globalSettings.helpers,
+              partials: Array.isArray(documentSettings.partials)
+                ? documentSettings.partials
+                : state.globalSettings.partials,
+              partialRoots: Array.isArray(documentSettings.partialRoots)
+                ? documentSettings.partialRoots
                 : state.globalSettings.partialRoots,
             },
             state.workspaceIndex,
-          ),
-        );
+          );
+        });
       state.documentSettings.set(resource, result);
     }
 

@@ -96,7 +96,7 @@ export function registerNavigationHandlers({
         );
       }
 
-      if (token.type !== 'partial') {
+      if (!isPartialReferenceToken(token)) {
         return null;
       }
 
@@ -159,6 +159,26 @@ async function readHelperTargetSelectionRange(
       ),
       new RegExp(
         String.raw`export\s+const\s+(${escapeRegExp(helperName)})\s*=\s*(?:helper|\()`,
+        'g',
+      ),
+      new RegExp(
+        String.raw`(?:^|\n)\s*export\s+(?:const|let|var)\s+(${escapeRegExp(helperName)})\b`,
+        'g',
+      ),
+      new RegExp(
+        String.raw`(?:^|\n)\s*(?:const|let|var)\s+(${escapeRegExp(helperName)})\b`,
+        'g',
+      ),
+      new RegExp(
+        String.raw`(?:^|\n)\s*export\s+default\s+function\s+(${escapeRegExp(helperName)})\b`,
+        'g',
+      ),
+      new RegExp(
+        String.raw`(?:^|\n)\s*export\s+(?:async\s+)?function\s+(${escapeRegExp(helperName)})\b`,
+        'g',
+      ),
+      new RegExp(
+        String.raw`(?:^|\n)\s*(?:async\s+)?function\s+(${escapeRegExp(helperName)})\b`,
         'g',
       ),
       new RegExp(
@@ -240,6 +260,20 @@ function positionAtOffset(
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function isPartialReferenceToken(token: {
+  type: string;
+  raw: string;
+}): boolean {
+  return token.type === 'partial' || isPartialBlockOpenToken(token);
+}
+
+function isPartialBlockOpenToken(token: {
+  type: string;
+  raw: string;
+}): boolean {
+  return token.type === 'block-open' && /^{{~?#>/.test(token.raw);
 }
 
 function zeroRange(): Range {

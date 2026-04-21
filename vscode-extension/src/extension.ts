@@ -1,3 +1,4 @@
+import { access } from 'node:fs/promises';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import {
@@ -47,8 +48,6 @@ export async function activate(
   outputChannel = vscode.window.createOutputChannel('hbs-lsp');
   context.subscriptions.push(outputChannel);
 
-  await startClient(context);
-
   context.subscriptions.push(
     vscode.commands.registerCommand('hbs-lsp.showIndex', async () => {
       const index = await requestWorkspaceIndex('handlebars/index');
@@ -83,17 +82,21 @@ export async function activate(
       }
     }),
   );
+
+  try {
+    await startClient(context);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    outputChannel?.appendLine(`[error] activation failed: ${message}`);
+    void vscode.window.showErrorMessage(`hbs-lsp failed to start: ${message}`);
+  }
 }
 
 async function startClient(
   context: vscode.ExtensionContext,
 ): Promise<void> {
-  const serverPath = path.resolve(
-    context.extensionPath,
-    'server',
-    'dist',
-    'server.js',
-  );
+  const serverPath = getBundledServerPath(context);
+  await assertBundledServerExists(serverPath);
 
   const serverOptions: ServerOptions = {
     run: {
@@ -127,6 +130,20 @@ async function startClient(
   );
 
   await client.start();
+}
+
+function getBundledServerPath(context: vscode.ExtensionContext): string {
+  return path.resolve(context.extensionPath, 'server', 'dist', 'server.js');
+}
+
+async function assertBundledServerExists(serverPath: string): Promise<void> {
+  try {
+    await access(serverPath);
+  } catch {
+    throw new Error(
+      `Bundled server not found at ${serverPath}. Reinstall the extension or rebuild the packaged server.`,
+    );
+  }
 }
 
 async function restartClient(): Promise<void> {

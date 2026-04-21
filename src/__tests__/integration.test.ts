@@ -201,6 +201,8 @@ describe('LSP Integration', () => {
     expect(caps.codeActionProvider).toBe(true);
     expect(caps.hoverProvider).toBe(true);
     expect(caps.semanticTokensProvider).toBeDefined();
+    expect(caps.workspace?.workspaceFolders?.supported).toBe(true);
+    expect(caps.workspace?.workspaceFolders?.changeNotifications).toBe(true);
   });
 
   // ── Diagnostics ───────────────────────────────────────────
@@ -464,6 +466,55 @@ describe('LSP Integration', () => {
     expect(invocationContent).toContain('Inline partial');
   });
 
+  it('prefers inline partial hover text over helper hover text on name collisions', async () => {
+    const uri = 'file:///tmp/hbs-lsp-test/example-inline-hover-collision.hbs';
+    const text = '{{#*inline "sampleHelper"}}x{{/inline}}\n{{> sampleHelper}}';
+
+    connection.sendNotification('textDocument/didOpen', {
+      textDocument: {
+        uri,
+        languageId: 'handlebars',
+        version: 1,
+        text,
+      },
+    });
+
+    await new Promise((r) => setTimeout(r, 100));
+
+    const declarationHover = await connection.sendRequest<Hover | null>(
+      'textDocument/hover',
+      {
+        textDocument: { uri },
+        position: { line: 0, character: 13 },
+      },
+    );
+    const invocationHover = await connection.sendRequest<Hover | null>(
+      'textDocument/hover',
+      {
+        textDocument: { uri },
+        position: { line: 1, character: 6 },
+      },
+    );
+
+    const declarationContent =
+      declarationHover &&
+      typeof declarationHover.contents !== 'string' &&
+      'value' in declarationHover.contents
+        ? declarationHover.contents.value
+        : '';
+    const invocationContent =
+      invocationHover &&
+      typeof invocationHover.contents !== 'string' &&
+      'value' in invocationHover.contents
+        ? invocationHover.contents.value
+        : '';
+
+    expect(declarationContent).toContain('Inline partial');
+    expect(declarationContent).not.toContain('**Helper**');
+    expect(invocationContent).toContain('Inline partial invocation');
+    expect(invocationContent).not.toContain('**Helper**');
+  });
+
   // ── Definition ────────────────────────────────────────────
 
   it('resolves partial definitions to indexed files', async () => {
@@ -489,6 +540,47 @@ describe('LSP Integration', () => {
       {
         textDocument: { uri },
         position: { line: 0, character: 14 },
+      },
+    );
+
+    expect(Array.isArray(result)).toBe(true);
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          targetUri:
+            'file:///tmp/hbs-lsp-test/x/components/foo/partials/bar.hbs',
+        }),
+      ]),
+    );
+  });
+
+  it('resolves partial block definitions to indexed files', async () => {
+    const partialPath = path.join(
+      tmpRoot,
+      'x',
+      'components',
+      'foo',
+      'partials',
+      'bar.hbs',
+    );
+    await mkdir(path.dirname(partialPath), { recursive: true });
+    await writeFile(partialPath, '<div>Example</div>', 'utf8');
+
+    await connection.sendRequest('handlebars/reindex');
+
+    const uri = 'file:///tmp/hbs-lsp-test/definition-partial-block.hbs';
+    openDocument(
+      connection,
+      uri,
+      '{{#> foo/partials/bar}}x{{/foo/partials/bar}}',
+    );
+    await new Promise((r) => setTimeout(r, 100));
+
+    const result = await connection.sendRequest<Definition | null>(
+      'textDocument/definition',
+      {
+        textDocument: { uri },
+        position: { line: 0, character: 15 },
       },
     );
 
@@ -530,14 +622,14 @@ describe('LSP Integration', () => {
     await mkdir(path.dirname(helperPath), { recursive: true });
     await writeFile(
       helperPath,
-      'export const formatDate = helper(function formatDate() {});\n',
+      'export const sampleHelper = helper(function sampleHelper() {});\n',
       'utf8',
     );
 
     await connection.sendRequest('handlebars/reindex');
 
     const uri = 'file:///tmp/hbs-lsp-test/definition-helper.hbs';
-    openDocument(connection, uri, '{{formatDate createdAt}}');
+    openDocument(connection, uri, '{{sampleHelper createdAt}}');
     await new Promise((r) => setTimeout(r, 100));
 
     const result = await connection.sendRequest<Definition | null>(
@@ -566,7 +658,7 @@ describe('LSP Integration', () => {
       helperModulePath,
       `
       module.exports = {
-        formatDate(value) { return value; },
+        sampleHelper(value) { return value; },
       };
       `,
       'utf8',
@@ -587,7 +679,7 @@ describe('LSP Integration', () => {
     await connection.sendRequest('handlebars/reindex');
 
     const uri = 'file:///tmp/hbs-lsp-test/definition-helper-bag.hbs';
-    openDocument(connection, uri, '{{formatDate createdAt}}');
+    openDocument(connection, uri, '{{sampleHelper createdAt}}');
     await new Promise((r) => setTimeout(r, 100));
 
     const result = await connection.sendRequest<Definition | null>(
@@ -621,7 +713,7 @@ describe('LSP Integration', () => {
       sharedPath,
       `
       module.exports = {
-        formatDate(value) { return value; },
+        sampleHelper(value) { return value; },
       };
       `,
       'utf8',
@@ -654,7 +746,7 @@ describe('LSP Integration', () => {
     await connection.sendRequest('handlebars/reindex');
 
     const uri = 'file:///tmp/hbs-lsp-test/definition-helper-spread.hbs';
-    openDocument(connection, uri, '{{formatDate createdAt}}');
+    openDocument(connection, uri, '{{sampleHelper createdAt}}');
     await new Promise((r) => setTimeout(r, 100));
 
     const result = await connection.sendRequest<Definition | null>(
@@ -682,7 +774,7 @@ describe('LSP Integration', () => {
       helperPath,
       `
       module.exports = {
-        formatDate(value) { return value; },
+        sampleHelper(value) { return value; },
       };
       `,
       'utf8',
@@ -691,7 +783,11 @@ describe('LSP Integration', () => {
     await connection.sendRequest('handlebars/reindex');
 
     const uri = 'file:///tmp/hbs-lsp-test/definition-block-helper.hbs';
-    openDocument(connection, uri, '{{#formatDate createdAt}}x{{/formatDate}}');
+    openDocument(
+      connection,
+      uri,
+      '{{#sampleHelper createdAt}}x{{/sampleHelper}}',
+    );
     await new Promise((r) => setTimeout(r, 100));
 
     const result = await connection.sendRequest<Definition | null>(
@@ -745,7 +841,7 @@ describe('LSP Integration', () => {
     });
   });
 
-  it('targets shorthand helper names precisely in definition results', async () => {
+  it('targets shorthand helper declarations precisely in definition results', async () => {
     const helperPath = path.join(
       tmpRoot,
       'src',
@@ -782,8 +878,8 @@ describe('LSP Integration', () => {
         ? result[0]
         : null;
     expect(firstLink?.targetSelectionRange).toEqual({
-      start: { line: 3, character: 8 },
-      end: { line: 3, character: 23 },
+      start: { line: 1, character: 12 },
+      end: { line: 1, character: 27 },
     });
   });
 

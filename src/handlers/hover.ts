@@ -20,13 +20,16 @@ export function registerHoverHandler({
 
     const offset = document.offsetAt(position);
     const text = document.getText();
-    const word = readTokenAt(text, offset);
-    if (!word) {
+    const rawWord = readTokenAt(text, offset);
+    if (!rawWord) {
       return null;
     }
 
+    const word = rawWord.replace(/^\//, '');
+
     const settings = await getDocumentSettings(textDocument.uri);
-    const inlinePartial = extractInlinePartialDefinitions(text).find(
+    const inlinePartials = extractInlinePartialDefinitions(text);
+    const inlinePartial = inlinePartials.find(
       (candidate) =>
         offset >= candidate.nameIndex &&
         offset <= candidate.nameIndex + candidate.nameLength,
@@ -37,15 +40,6 @@ export function registerHoverHandler({
         offset <= candidate.index + candidate.length &&
         candidate.name === word,
     );
-
-    if (settings.helpers.includes(word) || workspaceIndex.helpers.has(word)) {
-      return {
-        contents: {
-          kind: MarkupKind.Markdown,
-          value: `**Helper** \`${word}\``,
-        },
-      };
-    }
 
     if (inlinePartial) {
       return {
@@ -61,20 +55,9 @@ export function registerHoverHandler({
       };
     }
 
-    if (settings.partials.includes(word) || workspaceIndex.partials.has(word)) {
-      return {
-        contents: {
-          kind: MarkupKind.Markdown,
-          value: `**Partial** \`${word}\``,
-        },
-      };
-    }
-
     if (
-      token?.type === 'partial' &&
-      extractInlinePartialDefinitions(text).some(
-        (candidate) => candidate.name === word,
-      )
+      isPartialReferenceToken(token) &&
+      inlinePartials.some((candidate) => candidate.name === word)
     ) {
       return {
         contents: {
@@ -84,7 +67,25 @@ export function registerHoverHandler({
       };
     }
 
-    if (token?.type === 'partial') {
+    if (settings.helpers.includes(word) || workspaceIndex.helpers.has(word)) {
+      return {
+        contents: {
+          kind: MarkupKind.Markdown,
+          value: `**Helper** \`${word}\``,
+        },
+      };
+    }
+
+    if (settings.partials.includes(word) || workspaceIndex.partials.has(word)) {
+      return {
+        contents: {
+          kind: MarkupKind.Markdown,
+          value: `**Partial** \`${word}\``,
+        },
+      };
+    }
+
+    if (isPartialReferenceToken(token)) {
       return {
         contents: {
           kind: MarkupKind.Markdown,
@@ -113,4 +114,13 @@ export function registerHoverHandler({
 
     return null;
   });
+}
+
+function isPartialReferenceToken(
+  token: { type: string; raw: string } | undefined,
+): boolean {
+  return token
+    ? token.type === 'partial' ||
+        (token.type === 'block-open' && /^{{~?#>/.test(token.raw))
+    : false;
 }

@@ -131,6 +131,21 @@ async function walkFilesWithRules(
       gitignoreRules,
     );
     if (ignoredByGitignore) {
+      if (
+        entry.isDirectory() &&
+        hasNegatedDescendantRule(relativePath, gitignoreRules)
+      ) {
+        await walkFilesWithRules(
+          root,
+          fullPath,
+          gitignoreRules,
+          logger,
+          out,
+          depth + 1,
+          scanLimits,
+          refreshStats,
+        );
+      }
       continue;
     }
 
@@ -205,16 +220,61 @@ function matchesGitignore(
   let ignored = false;
 
   for (const rule of rules) {
-    if (rule.dirOnly && !isDirectory) {
-      continue;
-    }
+    const matches = rule.dirOnly
+      ? isDirectory
+        ? matchesGitignoreRule(relativePath, rule.pattern)
+        : matchesGitignoreDescendantOfDirectoryRule(relativePath, rule.pattern)
+      : matchesGitignoreRule(relativePath, rule.pattern);
 
-    if (matchesGitignoreRule(relativePath, rule.pattern)) {
+    if (matches) {
       ignored = !rule.negated;
     }
   }
 
   return ignored;
+}
+
+function hasNegatedDescendantRule(
+  relativePath: string,
+  rules: GitignoreRule[],
+): boolean {
+  const normalizedPath = relativePath.replace(/\\/g, '/').replace(/\/$/, '');
+
+  return rules.some((rule) => {
+    if (!rule.negated) {
+      return false;
+    }
+
+    const normalizedPattern = rule.pattern.replace(/\\/g, '/');
+    if (!normalizedPattern.includes('/')) {
+      return !rule.dirOnly;
+    }
+
+    return (
+      normalizedPattern === normalizedPath ||
+      normalizedPattern.startsWith(`${normalizedPath}/`)
+    );
+  });
+}
+
+function matchesGitignoreDescendantOfDirectoryRule(
+  relativePath: string,
+  pattern: string,
+): boolean {
+  const normalizedPath = relativePath.replace(/\\/g, '/');
+  const normalizedPattern = pattern.replace(/\\/g, '/');
+
+  if (!normalizedPattern.includes('/')) {
+    const segments = normalizedPath.split('/').slice(0, -1);
+    return segments.some((segment) =>
+      globToRegExp(normalizedPattern).test(segment),
+    );
+  }
+
+  return (
+    normalizedPath !== normalizedPattern &&
+    globToRegExp(normalizedPattern).test(normalizedPath)
+  );
 }
 
 function matchesGitignoreRule(relativePath: string, pattern: string): boolean {
@@ -714,9 +774,62 @@ function readBalancedObjectBody(
   openingBraceIndex: number,
 ): string | null {
   let depth = 0;
+  let stringQuote: "'" | '"' | '`' | null = null;
+  let escaped = false;
+  let inLineComment = false;
+  let inBlockComment = false;
 
   for (let index = openingBraceIndex; index < content.length; index += 1) {
     const char = content[index];
+    const next = content[index + 1];
+
+    if (inLineComment) {
+      if (char === '\n') {
+        inLineComment = false;
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (char === '*' && next === '/') {
+        inBlockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+
+    if (stringQuote) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (char === stringQuote) {
+        stringQuote = null;
+      }
+      continue;
+    }
+
+    if (char === '/' && next === '/') {
+      inLineComment = true;
+      index += 1;
+      continue;
+    }
+
+    if (char === '/' && next === '*') {
+      inBlockComment = true;
+      index += 1;
+      continue;
+    }
+
+    if (char === "'" || char === '"' || char === '`') {
+      stringQuote = char;
+      continue;
+    }
+
     if (char === '{') {
       depth += 1;
       continue;
@@ -919,6 +1032,27 @@ async function resolveImportedModulePath(
     }
   }
 
+  for (const match of content.matchAll(
+    /import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g,
+  )) {
+    const specifiers = (match[1] ?? '')
+      .split(',')
+      .map((specifier) => specifier.trim())
+      .filter((specifier) => specifier.length > 0);
+    const requestPath = match[2] ?? '';
+
+    const resolvesIdentifier = specifiers.some((specifier) => {
+      const [importedName, localName] = specifier
+        .split(/\s+as\s+/i)
+        .map((value) => value.trim());
+      return (localName ?? importedName) === identifier;
+    });
+
+    if (resolvesIdentifier && requestPath.startsWith('.')) {
+      return resolveModuleFilePath(path.dirname(filePath), requestPath);
+    }
+  }
+
   return null;
 }
 
@@ -953,27 +1087,170 @@ async function resolveModuleFilePath(
 function extractHelperNamesFromObjectBody(objectBody: string): string[] {
   const helpers = new Set<string>();
   const propertyPattern =
-    /(?:^|\n|,)\s*(?:['"]([A-Za-z_$][A-Za-z0-9_$-]*)['"]|([A-Za-z_$][A-Za-z0-9_$-]*))\s*:/g;
+    /^(?:['"]([A-Za-z_$][A-Za-z0-9_$-]*)['"]|([A-Za-z_$][A-Za-z0-9_$-]*))\s*:/;
   const methodPattern =
-    /(?:^|\n|,)\s*([A-Za-z_$][A-Za-z0-9_$-]*)\s*\([^)]*\)\s*\{/g;
-  const shorthandPattern = /(?:^|\n|,)\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*(?=,|$)/g;
+    /^(?:async\s+)?([A-Za-z_$][A-Za-z0-9_$-]*)\s*\([^)]*\)\s*\{/;
+  const shorthandPattern = /^([A-Za-z_$][A-Za-z0-9_$]*)$/;
 
-  for (const match of objectBody.matchAll(propertyPattern)) {
-    helpers.add(match[1] ?? match[2]);
-  }
+  for (const entry of extractTopLevelObjectEntries(objectBody)) {
+    const trimmedEntry = entry.trim();
+    if (!trimmedEntry) {
+      continue;
+    }
 
-  for (const match of objectBody.matchAll(methodPattern)) {
-    helpers.add(match[1]);
-  }
+    const propertyMatch = trimmedEntry.match(propertyPattern);
+    if (propertyMatch) {
+      helpers.add(propertyMatch[1] ?? propertyMatch[2]);
+      continue;
+    }
 
-  for (const match of objectBody.matchAll(shorthandPattern)) {
-    const name = match[1];
-    if (!['async', 'get', 'set'].includes(name)) {
-      helpers.add(name);
+    const methodMatch = trimmedEntry.match(methodPattern);
+    if (methodMatch) {
+      const name = methodMatch[1];
+      if (!['get', 'set'].includes(name)) {
+        helpers.add(name);
+      }
+      continue;
+    }
+
+    const shorthandMatch = trimmedEntry.match(shorthandPattern);
+    if (shorthandMatch) {
+      const name = shorthandMatch[1];
+      if (!['async', 'get', 'set'].includes(name)) {
+        helpers.add(name);
+      }
     }
   }
 
   return Array.from(helpers);
+}
+
+function extractTopLevelObjectEntries(objectBody: string): string[] {
+  const entries: string[] = [];
+  let current = '';
+  let braceDepth = 0;
+  let bracketDepth = 0;
+  let parenDepth = 0;
+  let stringQuote: "'" | '"' | '`' | null = null;
+  let escaped = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let index = 0; index < objectBody.length; index += 1) {
+    const char = objectBody[index];
+    const next = objectBody[index + 1];
+
+    if (inLineComment) {
+      current += char;
+      if (char === '\n') {
+        inLineComment = false;
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      current += char;
+      if (char === '*' && next === '/') {
+        current += next;
+        inBlockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+
+    if (stringQuote) {
+      current += char;
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (char === stringQuote) {
+        stringQuote = null;
+      }
+      continue;
+    }
+
+    if (char === '/' && next === '/') {
+      current += char;
+      current += next;
+      inLineComment = true;
+      index += 1;
+      continue;
+    }
+
+    if (char === '/' && next === '*') {
+      current += char;
+      current += next;
+      inBlockComment = true;
+      index += 1;
+      continue;
+    }
+
+    if (char === "'" || char === '"' || char === '`') {
+      current += char;
+      stringQuote = char;
+      continue;
+    }
+
+    if (char === '{') {
+      braceDepth += 1;
+      current += char;
+      continue;
+    }
+
+    if (char === '}') {
+      braceDepth = Math.max(0, braceDepth - 1);
+      current += char;
+      continue;
+    }
+
+    if (char === '[') {
+      bracketDepth += 1;
+      current += char;
+      continue;
+    }
+
+    if (char === ']') {
+      bracketDepth = Math.max(0, bracketDepth - 1);
+      current += char;
+      continue;
+    }
+
+    if (char === '(') {
+      parenDepth += 1;
+      current += char;
+      continue;
+    }
+
+    if (char === ')') {
+      parenDepth = Math.max(0, parenDepth - 1);
+      current += char;
+      continue;
+    }
+
+    if (
+      char === ',' &&
+      braceDepth === 0 &&
+      bracketDepth === 0 &&
+      parenDepth === 0
+    ) {
+      entries.push(current);
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current.trim().length > 0) {
+    entries.push(current);
+  }
+
+  return entries;
 }
 
 function escapeRegExp(value: string): string {
@@ -1299,24 +1576,211 @@ async function extractPartialRootsFromFile(
   }
 
   const roots = new Set<string>();
-  const partialsDirPattern =
-    /partialsDir\s*:\s*(\[[\s\S]*?\]|['"`][^'"`]+['"`])/g;
-  for (const match of content.matchAll(partialsDirPattern)) {
-    const value = match[1] ?? '';
-    for (const stringMatch of value.matchAll(/['"`]([^'"`]+)['"`]/g)) {
-      const partialRoot = stringMatch[1]?.trim();
-      if (!partialRoot) {
-        continue;
-      }
-      roots.add(
-        path.isAbsolute(partialRoot)
-          ? partialRoot.replace(/\\/g, '/')
-          : path.resolve(workspaceRoot, partialRoot).replace(/\\/g, '/'),
-      );
+  for (const partialRoot of extractPartialsDirValues(stripComments(content))) {
+    const normalizedPartialRoot = partialRoot.trim();
+    if (!normalizedPartialRoot) {
+      continue;
     }
+
+    roots.add(
+      path.isAbsolute(normalizedPartialRoot)
+        ? normalizedPartialRoot.replace(/\\/g, '/')
+        : path
+            .resolve(workspaceRoot, normalizedPartialRoot)
+            .replace(/\\/g, '/'),
+    );
   }
 
   return Array.from(roots);
+}
+
+function extractPartialsDirValues(content: string): string[] {
+  const values: string[] = [];
+  let index = 0;
+  let stringQuote: "'" | '"' | '`' | null = null;
+  let escaped = false;
+
+  while (index < content.length) {
+    const char = content[index];
+
+    if (stringQuote) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === stringQuote) {
+        stringQuote = null;
+      }
+      index += 1;
+      continue;
+    }
+
+    if (char === "'" || char === '"' || char === '`') {
+      stringQuote = char;
+      index += 1;
+      continue;
+    }
+
+    if (
+      content.startsWith('partialsDir', index) &&
+      !/[A-Za-z0-9_$]/.test(content[index - 1] ?? '') &&
+      !/[A-Za-z0-9_$]/.test(content[index + 'partialsDir'.length] ?? '')
+    ) {
+      let cursor = index + 'partialsDir'.length;
+      while (/\s/.test(content[cursor] ?? '')) {
+        cursor += 1;
+      }
+      if (content[cursor] !== ':') {
+        index += 1;
+        continue;
+      }
+
+      cursor += 1;
+      while (/\s/.test(content[cursor] ?? '')) {
+        cursor += 1;
+      }
+
+      const result = readPartialsDirValue(content, cursor);
+      if (result) {
+        values.push(...result.values);
+        index = result.nextIndex;
+        continue;
+      }
+    }
+
+    index += 1;
+  }
+
+  return values;
+}
+
+function readPartialsDirValue(
+  content: string,
+  index: number,
+): { values: string[]; nextIndex: number } | null {
+  const opener = content[index];
+  if (opener === '[') {
+    const closeIndex = findMatchingBracket(content, index, '[', ']');
+    if (closeIndex === -1) {
+      return null;
+    }
+
+    return {
+      values: extractQuotedStrings(content.slice(index, closeIndex + 1)),
+      nextIndex: closeIndex + 1,
+    };
+  }
+
+  if (opener === "'" || opener === '"' || opener === '`') {
+    const closeIndex = findClosingQuote(content, index, opener);
+    if (closeIndex === -1) {
+      return null;
+    }
+
+    return {
+      values: [content.slice(index + 1, closeIndex)],
+      nextIndex: closeIndex + 1,
+    };
+  }
+
+  return null;
+}
+
+function extractQuotedStrings(content: string): string[] {
+  const values: string[] = [];
+  let index = 0;
+
+  while (index < content.length) {
+    const char = content[index];
+    if (char !== "'" && char !== '"' && char !== '`') {
+      index += 1;
+      continue;
+    }
+
+    const closeIndex = findClosingQuote(content, index, char);
+    if (closeIndex === -1) {
+      break;
+    }
+
+    values.push(content.slice(index + 1, closeIndex));
+    index = closeIndex + 1;
+  }
+
+  return values;
+}
+
+function findMatchingBracket(
+  content: string,
+  openingIndex: number,
+  openChar: string,
+  closeChar: string,
+): number {
+  let depth = 0;
+  let stringQuote: "'" | '"' | '`' | null = null;
+  let escaped = false;
+
+  for (let index = openingIndex; index < content.length; index += 1) {
+    const char = content[index];
+
+    if (stringQuote) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (char === stringQuote) {
+        stringQuote = null;
+      }
+      continue;
+    }
+
+    if (char === "'" || char === '"' || char === '`') {
+      stringQuote = char;
+      continue;
+    }
+
+    if (char === openChar) {
+      depth += 1;
+      continue;
+    }
+
+    if (char === closeChar) {
+      depth -= 1;
+      if (depth === 0) {
+        return index;
+      }
+    }
+  }
+
+  return -1;
+}
+
+function findClosingQuote(
+  content: string,
+  openingIndex: number,
+  quote: "'" | '"' | '`',
+): number {
+  let escaped = false;
+
+  for (let index = openingIndex + 1; index < content.length; index += 1) {
+    const char = content[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (char === quote) {
+      return index;
+    }
+  }
+
+  return -1;
 }
 
 async function readSourceFile(
