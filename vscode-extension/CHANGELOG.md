@@ -2,6 +2,25 @@
 
 All notable changes to the `hbs-lsp` VS Code extension will be documented in this file.
 
+## [0.1.6] - 2026-04-21
+
+### Fixed
+- Preserved global settings when resolving document-scoped configuration.
+- Fixed workspace root refresh behavior when workspace folders change.
+- Fixed helper extraction for objects containing string braces.
+- Fixed `.gitignore` negation handling inside ignored directories.
+- Fixed false-positive `partialsDir` detection from comments and strings.
+- Fixed named helper import resolution during workspace indexing.
+- Fixed completions appearing outside Handlebars expressions.
+- Fixed inline partial hover/completion collisions with helper names.
+- Fixed hover behavior for closing block tags.
+- Improved VS Code extension startup behavior when the bundled server is missing.
+
+### Internal
+- Added direct handler registration tests.
+- Added explicit source coverage configuration.
+- Excluded handler type-only module from coverage reporting.
+
 ## [0.1.5] - 2026-04-16
 
 ### Fixed
