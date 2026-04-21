@@ -16,6 +16,10 @@ export function getCompletions(
     start: Position.create(position.line, 0),
     end: position,
   });
+  const handlebarsPrefix = getHandlebarsCompletionPrefix(linePrefix);
+  if (!handlebarsPrefix) {
+    return [];
+  }
 
   const items: CompletionItem[] = [
     {
@@ -87,9 +91,23 @@ export function getCompletions(
       source.findIndex((candidate) => candidate.label === item.label) === index,
   );
 
-  if (/{{[#/>]?$/.test(linePrefix.trimStart())) {
+  if (/^{{[#/>]?$/.test(handlebarsPrefix)) {
     return dedupedItems;
   }
 
   return dedupedItems.filter((item) => !item.label.startsWith('{{#'));
+}
+
+function getHandlebarsCompletionPrefix(linePrefix: string): string | null {
+  const lastOpenIndex = linePrefix.lastIndexOf('{{');
+  if (lastOpenIndex === -1) {
+    return null;
+  }
+
+  const prefix = linePrefix.slice(lastOpenIndex);
+  if (prefix.includes('}}')) {
+    return null;
+  }
+
+  return /^{{[#/>]?\s*[A-Za-z0-9_./-]*$/.test(prefix) ? prefix : null;
 }
