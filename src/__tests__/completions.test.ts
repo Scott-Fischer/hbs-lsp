@@ -40,4 +40,23 @@ describe('getCompletions', () => {
       expect.arrayContaining(['{{> partial}}', 'samplePartial']),
     );
   });
+
+  it('prefers inline partial completion metadata over helper metadata on name collisions', () => {
+    const document = TextDocument.create(
+      'file:///tmp/inline-collision.hbs',
+      'handlebars',
+      1,
+      '{{#*inline "sampleHelper"}}x{{/inline}}\n{{> sampleHelper',
+    );
+
+    const items = getCompletions(document, Position.create(1, 15), {
+      ...defaultSettings,
+      helpers: ['sampleHelper'],
+      partials: [],
+    });
+    const item = items.find((candidate) => candidate.label === 'sampleHelper');
+
+    expect(item?.detail).toBe('Inline partial in document');
+    expect(item?.kind).toBeDefined();
+  });
 });

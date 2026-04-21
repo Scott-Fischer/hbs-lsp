@@ -86,9 +86,9 @@ export function getCompletions(
     });
   }
 
-  const dedupedItems = items.filter(
-    (item, index, source) =>
-      source.findIndex((candidate) => candidate.label === item.label) === index,
+  const dedupedItems = Array.from(
+    items.reduce((deduped, item) => deduped.set(item.label, item), new Map()),
+    ([, item]) => item,
   );
 
   if (/^{{[#/>]?$/.test(handlebarsPrefix)) {
