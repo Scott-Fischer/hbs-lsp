@@ -162,6 +162,26 @@ async function readHelperTargetSelectionRange(
         'g',
       ),
       new RegExp(
+        String.raw`(?:^|\n)\s*export\s+(?:const|let|var)\s+(${escapeRegExp(helperName)})\b`,
+        'g',
+      ),
+      new RegExp(
+        String.raw`(?:^|\n)\s*(?:const|let|var)\s+(${escapeRegExp(helperName)})\b`,
+        'g',
+      ),
+      new RegExp(
+        String.raw`(?:^|\n)\s*export\s+default\s+function\s+(${escapeRegExp(helperName)})\b`,
+        'g',
+      ),
+      new RegExp(
+        String.raw`(?:^|\n)\s*export\s+(?:async\s+)?function\s+(${escapeRegExp(helperName)})\b`,
+        'g',
+      ),
+      new RegExp(
+        String.raw`(?:^|\n)\s*(?:async\s+)?function\s+(${escapeRegExp(helperName)})\b`,
+        'g',
+      ),
+      new RegExp(
         String.raw`(?:^|\n|,)\s*(?:['"](${escapeRegExp(helperName)})['"]|(${escapeRegExp(helperName)}))\s*:`,
         'g',
       ),

@@ -518,7 +518,11 @@ describe('LSP Integration', () => {
     await connection.sendRequest('handlebars/reindex');
 
     const uri = 'file:///tmp/hbs-lsp-test/definition-partial-block.hbs';
-    openDocument(connection, uri, '{{#> foo/partials/bar}}x{{/foo/partials/bar}}');
+    openDocument(
+      connection,
+      uri,
+      '{{#> foo/partials/bar}}x{{/foo/partials/bar}}',
+    );
     await new Promise((r) => setTimeout(r, 100));
 
     const result = await connection.sendRequest<Definition | null>(
@@ -782,7 +786,7 @@ describe('LSP Integration', () => {
     });
   });
 
-  it('targets shorthand helper names precisely in definition results', async () => {
+  it('targets shorthand helper declarations precisely in definition results', async () => {
     const helperPath = path.join(
       tmpRoot,
       'src',
@@ -819,8 +823,8 @@ describe('LSP Integration', () => {
         ? result[0]
         : null;
     expect(firstLink?.targetSelectionRange).toEqual({
-      start: { line: 3, character: 8 },
-      end: { line: 3, character: 23 },
+      start: { line: 1, character: 12 },
+      end: { line: 1, character: 27 },
     });
   });
 
