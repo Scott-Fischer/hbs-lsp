@@ -997,7 +997,7 @@ function extractTopLevelObjectEntries(objectBody: string): string[] {
   let braceDepth = 0;
   let bracketDepth = 0;
   let parenDepth = 0;
-  let stringQuote: '\'' | '"' | '`' | null = null;
+  let stringQuote: "'" | '"' | '`' | null = null;
   let escaped = false;
   let inLineComment = false;
   let inBlockComment = false;
@@ -1056,7 +1056,7 @@ function extractTopLevelObjectEntries(objectBody: string): string[] {
       continue;
     }
 
-    if (char === '\'' || char === '"' || char === '`') {
+    if (char === "'" || char === '"' || char === '`') {
       current += char;
       stringQuote = char;
       continue;
