@@ -131,6 +131,21 @@ async function walkFilesWithRules(
       gitignoreRules,
     );
     if (ignoredByGitignore) {
+      if (
+        entry.isDirectory() &&
+        hasNegatedDescendantRule(relativePath, gitignoreRules)
+      ) {
+        await walkFilesWithRules(
+          root,
+          fullPath,
+          gitignoreRules,
+          logger,
+          out,
+          depth + 1,
+          scanLimits,
+          refreshStats,
+        );
+      }
       continue;
     }
 
@@ -205,16 +220,61 @@ function matchesGitignore(
   let ignored = false;
 
   for (const rule of rules) {
-    if (rule.dirOnly && !isDirectory) {
-      continue;
-    }
+    const matches = rule.dirOnly
+      ? isDirectory
+        ? matchesGitignoreRule(relativePath, rule.pattern)
+        : matchesGitignoreDescendantOfDirectoryRule(relativePath, rule.pattern)
+      : matchesGitignoreRule(relativePath, rule.pattern);
 
-    if (matchesGitignoreRule(relativePath, rule.pattern)) {
+    if (matches) {
       ignored = !rule.negated;
     }
   }
 
   return ignored;
+}
+
+function hasNegatedDescendantRule(
+  relativePath: string,
+  rules: GitignoreRule[],
+): boolean {
+  const normalizedPath = relativePath.replace(/\\/g, '/').replace(/\/$/, '');
+
+  return rules.some((rule) => {
+    if (!rule.negated) {
+      return false;
+    }
+
+    const normalizedPattern = rule.pattern.replace(/\\/g, '/');
+    if (!normalizedPattern.includes('/')) {
+      return !rule.dirOnly;
+    }
+
+    return (
+      normalizedPattern === normalizedPath ||
+      normalizedPattern.startsWith(`${normalizedPath}/`)
+    );
+  });
+}
+
+function matchesGitignoreDescendantOfDirectoryRule(
+  relativePath: string,
+  pattern: string,
+): boolean {
+  const normalizedPath = relativePath.replace(/\\/g, '/');
+  const normalizedPattern = pattern.replace(/\\/g, '/');
+
+  if (!normalizedPattern.includes('/')) {
+    const segments = normalizedPath.split('/').slice(0, -1);
+    return segments.some((segment) =>
+      globToRegExp(normalizedPattern).test(segment),
+    );
+  }
+
+  return (
+    normalizedPath !== normalizedPattern &&
+    globToRegExp(normalizedPattern).test(normalizedPath)
+  );
 }
 
 function matchesGitignoreRule(relativePath: string, pattern: string): boolean {

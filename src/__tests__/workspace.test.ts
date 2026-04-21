@@ -168,6 +168,29 @@ describe('walkFiles', () => {
     expect(files).toContain(path.join(tmpDir, 'important.log'));
   });
 
+  it('supports negated .gitignore files inside ignored directories', async () => {
+    await mkdir(path.join(tmpDir, 'generated'), { recursive: true });
+    await writeFile(
+      path.join(tmpDir, '.gitignore'),
+      'generated/\n!generated/keep.ts\n',
+      'utf8',
+    );
+    await writeFile(
+      path.join(tmpDir, 'generated', 'skip.ts'),
+      'export const skip = true;',
+      'utf8',
+    );
+    await writeFile(
+      path.join(tmpDir, 'generated', 'keep.ts'),
+      'export const keep = true;',
+      'utf8',
+    );
+
+    const files = await walkFiles(tmpDir);
+    expect(files).not.toContain(path.join(tmpDir, 'generated', 'skip.ts'));
+    expect(files).toContain(path.join(tmpDir, 'generated', 'keep.ts'));
+  });
+
   afterAll(async () => {
     await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   });
