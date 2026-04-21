@@ -740,6 +740,58 @@ describe('extractHelpersFromFile', () => {
     );
   });
 
+  it('extracts helpers from named imports used in ExpressHandlebars config', async () => {
+    await writeTmpFile(
+      'named-helpers.ts',
+      `
+      export const helpers = {
+        sampleHelper,
+        uppercase: (value) => value,
+      };
+      `,
+    );
+    const filePath = await writeTmpFile(
+      'express-variable-named-import.ts',
+      `
+      import { helpers } from './named-helpers';
+
+      const expressHandlebars = new ExpressHandlebars({
+        helpers,
+      });
+      `,
+    );
+    const helpers = await extractHelpersFromFile(filePath);
+    expect(helpers).toEqual(
+      expect.arrayContaining(['sampleHelper', 'uppercase']),
+    );
+  });
+
+  it('extracts helpers from aliased named imports used in ExpressHandlebars config', async () => {
+    await writeTmpFile(
+      'named-helpers-alias.ts',
+      `
+      export const helpers = {
+        sampleHelper,
+        uppercase: (value) => value,
+      };
+      `,
+    );
+    const filePath = await writeTmpFile(
+      'express-variable-named-import-alias.ts',
+      `
+      import { helpers as viewHelpers } from './named-helpers-alias';
+
+      const expressHandlebars = new ExpressHandlebars({
+        helpers: viewHelpers,
+      });
+      `,
+    );
+    const helpers = await extractHelpersFromFile(filePath);
+    expect(helpers).toEqual(
+      expect.arrayContaining(['sampleHelper', 'uppercase']),
+    );
+  });
+
   it('deduplicates helper names discovered from direct and spread sources', async () => {
     const filePath = await writeTmpFile(
       'helpers-dedupe.js',

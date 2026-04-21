@@ -1032,6 +1032,27 @@ async function resolveImportedModulePath(
     }
   }
 
+  for (const match of content.matchAll(
+    /import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g,
+  )) {
+    const specifiers = (match[1] ?? '')
+      .split(',')
+      .map((specifier) => specifier.trim())
+      .filter((specifier) => specifier.length > 0);
+    const requestPath = match[2] ?? '';
+
+    const resolvesIdentifier = specifiers.some((specifier) => {
+      const [importedName, localName] = specifier
+        .split(/\s+as\s+/i)
+        .map((value) => value.trim());
+      return (localName ?? importedName) === identifier;
+    });
+
+    if (resolvesIdentifier && requestPath.startsWith('.')) {
+      return resolveModuleFilePath(path.dirname(filePath), requestPath);
+    }
+  }
+
   return null;
 }
 
