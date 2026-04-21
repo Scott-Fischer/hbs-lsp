@@ -26,7 +26,8 @@ export function registerHoverHandler({
     }
 
     const settings = await getDocumentSettings(textDocument.uri);
-    const inlinePartial = extractInlinePartialDefinitions(text).find(
+    const inlinePartials = extractInlinePartialDefinitions(text);
+    const inlinePartial = inlinePartials.find(
       (candidate) =>
         offset >= candidate.nameIndex &&
         offset <= candidate.nameIndex + candidate.nameLength,
@@ -37,15 +38,6 @@ export function registerHoverHandler({
         offset <= candidate.index + candidate.length &&
         candidate.name === word,
     );
-
-    if (settings.helpers.includes(word) || workspaceIndex.helpers.has(word)) {
-      return {
-        contents: {
-          kind: MarkupKind.Markdown,
-          value: `**Helper** \`${word}\``,
-        },
-      };
-    }
 
     if (inlinePartial) {
       return {
@@ -61,25 +53,32 @@ export function registerHoverHandler({
       };
     }
 
-    if (settings.partials.includes(word) || workspaceIndex.partials.has(word)) {
-      return {
-        contents: {
-          kind: MarkupKind.Markdown,
-          value: `**Partial** \`${word}\``,
-        },
-      };
-    }
-
     if (
       isPartialReferenceToken(token) &&
-      extractInlinePartialDefinitions(text).some(
-        (candidate) => candidate.name === word,
-      )
+      inlinePartials.some((candidate) => candidate.name === word)
     ) {
       return {
         contents: {
           kind: MarkupKind.Markdown,
           value: `**Inline partial invocation** \`${word}\``,
+        },
+      };
+    }
+
+    if (settings.helpers.includes(word) || workspaceIndex.helpers.has(word)) {
+      return {
+        contents: {
+          kind: MarkupKind.Markdown,
+          value: `**Helper** \`${word}\``,
+        },
+      };
+    }
+
+    if (settings.partials.includes(word) || workspaceIndex.partials.has(word)) {
+      return {
+        contents: {
+          kind: MarkupKind.Markdown,
+          value: `**Partial** \`${word}\``,
         },
       };
     }

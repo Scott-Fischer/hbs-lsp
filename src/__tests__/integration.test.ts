@@ -466,6 +466,55 @@ describe('LSP Integration', () => {
     expect(invocationContent).toContain('Inline partial');
   });
 
+  it('prefers inline partial hover text over helper hover text on name collisions', async () => {
+    const uri = 'file:///tmp/hbs-lsp-test/example-inline-hover-collision.hbs';
+    const text = '{{#*inline "sampleHelper"}}x{{/inline}}\n{{> sampleHelper}}';
+
+    connection.sendNotification('textDocument/didOpen', {
+      textDocument: {
+        uri,
+        languageId: 'handlebars',
+        version: 1,
+        text,
+      },
+    });
+
+    await new Promise((r) => setTimeout(r, 100));
+
+    const declarationHover = await connection.sendRequest<Hover | null>(
+      'textDocument/hover',
+      {
+        textDocument: { uri },
+        position: { line: 0, character: 13 },
+      },
+    );
+    const invocationHover = await connection.sendRequest<Hover | null>(
+      'textDocument/hover',
+      {
+        textDocument: { uri },
+        position: { line: 1, character: 6 },
+      },
+    );
+
+    const declarationContent =
+      declarationHover &&
+      typeof declarationHover.contents !== 'string' &&
+      'value' in declarationHover.contents
+        ? declarationHover.contents.value
+        : '';
+    const invocationContent =
+      invocationHover &&
+      typeof invocationHover.contents !== 'string' &&
+      'value' in invocationHover.contents
+        ? invocationHover.contents.value
+        : '';
+
+    expect(declarationContent).toContain('Inline partial');
+    expect(declarationContent).not.toContain('**Helper**');
+    expect(invocationContent).toContain('Inline partial invocation');
+    expect(invocationContent).not.toContain('**Helper**');
+  });
+
   // ── Definition ────────────────────────────────────────────
 
   it('resolves partial definitions to indexed files', async () => {
