@@ -1555,24 +1555,211 @@ async function extractPartialRootsFromFile(
   }
 
   const roots = new Set<string>();
-  const partialsDirPattern =
-    /partialsDir\s*:\s*(\[[\s\S]*?\]|['"`][^'"`]+['"`])/g;
-  for (const match of content.matchAll(partialsDirPattern)) {
-    const value = match[1] ?? '';
-    for (const stringMatch of value.matchAll(/['"`]([^'"`]+)['"`]/g)) {
-      const partialRoot = stringMatch[1]?.trim();
-      if (!partialRoot) {
-        continue;
-      }
-      roots.add(
-        path.isAbsolute(partialRoot)
-          ? partialRoot.replace(/\\/g, '/')
-          : path.resolve(workspaceRoot, partialRoot).replace(/\\/g, '/'),
-      );
+  for (const partialRoot of extractPartialsDirValues(stripComments(content))) {
+    const normalizedPartialRoot = partialRoot.trim();
+    if (!normalizedPartialRoot) {
+      continue;
     }
+
+    roots.add(
+      path.isAbsolute(normalizedPartialRoot)
+        ? normalizedPartialRoot.replace(/\\/g, '/')
+        : path
+            .resolve(workspaceRoot, normalizedPartialRoot)
+            .replace(/\\/g, '/'),
+    );
   }
 
   return Array.from(roots);
+}
+
+function extractPartialsDirValues(content: string): string[] {
+  const values: string[] = [];
+  let index = 0;
+  let stringQuote: "'" | '"' | '`' | null = null;
+  let escaped = false;
+
+  while (index < content.length) {
+    const char = content[index];
+
+    if (stringQuote) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === stringQuote) {
+        stringQuote = null;
+      }
+      index += 1;
+      continue;
+    }
+
+    if (char === "'" || char === '"' || char === '`') {
+      stringQuote = char;
+      index += 1;
+      continue;
+    }
+
+    if (
+      content.startsWith('partialsDir', index) &&
+      !/[A-Za-z0-9_$]/.test(content[index - 1] ?? '') &&
+      !/[A-Za-z0-9_$]/.test(content[index + 'partialsDir'.length] ?? '')
+    ) {
+      let cursor = index + 'partialsDir'.length;
+      while (/\s/.test(content[cursor] ?? '')) {
+        cursor += 1;
+      }
+      if (content[cursor] !== ':') {
+        index += 1;
+        continue;
+      }
+
+      cursor += 1;
+      while (/\s/.test(content[cursor] ?? '')) {
+        cursor += 1;
+      }
+
+      const result = readPartialsDirValue(content, cursor);
+      if (result) {
+        values.push(...result.values);
+        index = result.nextIndex;
+        continue;
+      }
+    }
+
+    index += 1;
+  }
+
+  return values;
+}
+
+function readPartialsDirValue(
+  content: string,
+  index: number,
+): { values: string[]; nextIndex: number } | null {
+  const opener = content[index];
+  if (opener === '[') {
+    const closeIndex = findMatchingBracket(content, index, '[', ']');
+    if (closeIndex === -1) {
+      return null;
+    }
+
+    return {
+      values: extractQuotedStrings(content.slice(index, closeIndex + 1)),
+      nextIndex: closeIndex + 1,
+    };
+  }
+
+  if (opener === "'" || opener === '"' || opener === '`') {
+    const closeIndex = findClosingQuote(content, index, opener);
+    if (closeIndex === -1) {
+      return null;
+    }
+
+    return {
+      values: [content.slice(index + 1, closeIndex)],
+      nextIndex: closeIndex + 1,
+    };
+  }
+
+  return null;
+}
+
+function extractQuotedStrings(content: string): string[] {
+  const values: string[] = [];
+  let index = 0;
+
+  while (index < content.length) {
+    const char = content[index];
+    if (char !== "'" && char !== '"' && char !== '`') {
+      index += 1;
+      continue;
+    }
+
+    const closeIndex = findClosingQuote(content, index, char);
+    if (closeIndex === -1) {
+      break;
+    }
+
+    values.push(content.slice(index + 1, closeIndex));
+    index = closeIndex + 1;
+  }
+
+  return values;
+}
+
+function findMatchingBracket(
+  content: string,
+  openingIndex: number,
+  openChar: string,
+  closeChar: string,
+): number {
+  let depth = 0;
+  let stringQuote: "'" | '"' | '`' | null = null;
+  let escaped = false;
+
+  for (let index = openingIndex; index < content.length; index += 1) {
+    const char = content[index];
+
+    if (stringQuote) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (char === stringQuote) {
+        stringQuote = null;
+      }
+      continue;
+    }
+
+    if (char === "'" || char === '"' || char === '`') {
+      stringQuote = char;
+      continue;
+    }
+
+    if (char === openChar) {
+      depth += 1;
+      continue;
+    }
+
+    if (char === closeChar) {
+      depth -= 1;
+      if (depth === 0) {
+        return index;
+      }
+    }
+  }
+
+  return -1;
+}
+
+function findClosingQuote(
+  content: string,
+  openingIndex: number,
+  quote: "'" | '"' | '`',
+): number {
+  let escaped = false;
+
+  for (let index = openingIndex + 1; index < content.length; index += 1) {
+    const char = content[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (char === quote) {
+      return index;
+    }
+  }
+
+  return -1;
 }
 
 async function readSourceFile(

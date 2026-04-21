@@ -302,6 +302,72 @@ describe('refreshWorkspaceIndex', () => {
     );
   });
 
+  it('does not detect partial roots from partialsDir text inside comments', async () => {
+    const workspaceRoot = path.join(tmpDir, 'comment-only-root');
+    await mkdir(path.join(workspaceRoot, 'partials', 'x'), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(workspaceRoot, 'partials', 'x', 'foo.hbs'),
+      '<div></div>',
+      'utf8',
+    );
+    await writeFile(
+      path.join(workspaceRoot, 'app-comment.ts'),
+      `// partialsDir: ['./partials']\nconst app = true;`,
+      'utf8',
+    );
+
+    const workspaceIndex: WorkspaceIndex = {
+      helpers: new Set(),
+      helperFilesByName: new Map(),
+      partials: new Set(),
+      partialFilesByName: new Map(),
+      partialSourcesByName: new Map(),
+    };
+
+    await refreshWorkspaceIndex(workspaceIndex, [workspaceRoot]);
+
+    expect(
+      workspaceIndex.partialSourcesByName
+        .get('x/foo')
+        ?.some((source) => source.kind === 'detected-partialsDir') ?? false,
+    ).toBe(false);
+  });
+
+  it('does not detect partial roots from partialsDir text inside strings', async () => {
+    const workspaceRoot = path.join(tmpDir, 'string-only-root');
+    await mkdir(path.join(workspaceRoot, 'partials', 'y'), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(workspaceRoot, 'partials', 'y', 'bar.hbs'),
+      '<div></div>',
+      'utf8',
+    );
+    await writeFile(
+      path.join(workspaceRoot, 'app-string.ts'),
+      `const message = "partialsDir: ['./partials']";`,
+      'utf8',
+    );
+
+    const workspaceIndex: WorkspaceIndex = {
+      helpers: new Set(),
+      helperFilesByName: new Map(),
+      partials: new Set(),
+      partialFilesByName: new Map(),
+      partialSourcesByName: new Map(),
+    };
+
+    await refreshWorkspaceIndex(workspaceIndex, [workspaceRoot]);
+
+    expect(
+      workspaceIndex.partialSourcesByName
+        .get('y/bar')
+        ?.some((source) => source.kind === 'detected-partialsDir') ?? false,
+    ).toBe(false);
+  });
+
   it('indexes partials registered in JS/TS files', async () => {
     await writeFile(
       path.join(tmpDir, 'partials.ts'),
