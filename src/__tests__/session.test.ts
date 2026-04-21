@@ -113,6 +113,9 @@ describe('createSessionHelpers', () => {
     state.hasConfigurationCapability = true;
     state.globalSettings = {
       ...state.globalSettings,
+      maxFullAnalysisChars: 1234,
+      helpers: [...state.globalSettings.helpers, 'formatDate'],
+      partials: ['card'],
       partialRoots: ['./partials'],
     };
 
@@ -147,7 +150,19 @@ describe('createSessionHelpers', () => {
     expect(first.indentSize).toBe(6);
     expect(second.indentSize).toBe(6);
     expect(third.indentSize).toBe(2);
+    expect(first.helpers).toEqual([
+      'if',
+      'unless',
+      'each',
+      'with',
+      'let',
+      'log',
+      'lookup',
+      'formatDate',
+    ]);
+    expect(first.partials).toEqual(['card']);
     expect(first.partialRoots).toEqual(['./partials']);
+    expect(first.maxFullAnalysisChars).toBe(1234);
     expect(getConfigurationCount).toBe(2);
   });
 

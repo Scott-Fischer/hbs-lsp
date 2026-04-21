@@ -171,19 +171,25 @@ export function createSessionHelpers(
           scopeUri: resource,
           section: 'handlebars',
         })
-        .then((settings) =>
-          normalizeSettings(
+        .then((settings) => {
+          const documentSettings = settings as Partial<ServerSettings>;
+          return normalizeSettings(
             {
-              ...(settings as Partial<ServerSettings>),
-              partialRoots: Array.isArray(
-                (settings as Partial<ServerSettings>).partialRoots,
-              )
-                ? (settings as Partial<ServerSettings>).partialRoots
+              ...state.globalSettings,
+              ...documentSettings,
+              helpers: Array.isArray(documentSettings.helpers)
+                ? documentSettings.helpers
+                : state.globalSettings.helpers,
+              partials: Array.isArray(documentSettings.partials)
+                ? documentSettings.partials
+                : state.globalSettings.partials,
+              partialRoots: Array.isArray(documentSettings.partialRoots)
+                ? documentSettings.partialRoots
                 : state.globalSettings.partialRoots,
             },
             state.workspaceIndex,
-          ),
-        );
+          );
+        });
       state.documentSettings.set(resource, result);
     }
 
