@@ -11,6 +11,7 @@ import {
   ProposedFeatures,
   TextDocumentSyncKind,
   TextDocuments,
+  type WorkspaceFoldersChangeEvent,
 } from 'vscode-languageserver/node.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { registerCodeActionsHandler } from './handlers/codeActions.js';
@@ -26,6 +27,7 @@ import {
   createSessionState,
   initializeSession,
 } from './session.js';
+import { fileUriToPath } from './utilities.js';
 import type { Logger } from './workspace.js';
 
 const helpText = `
@@ -136,6 +138,33 @@ connection.onDidChangeConfiguration((change) => {
     .doRefreshWorkspaceIndex()
     .then(sessionHelpers.validateOpenDocuments);
 });
+
+connection.workspace.onDidChangeWorkspaceFolders(
+  (event: WorkspaceFoldersChangeEvent) => {
+    for (const folder of event.added) {
+      const addedRoot = fileUriToPath(folder.uri);
+      if (addedRoot && !session.workspaceRoots.includes(addedRoot)) {
+        session.workspaceRoots.push(addedRoot);
+      }
+    }
+
+    for (const folder of event.removed) {
+      const removedRoot = fileUriToPath(folder.uri);
+      if (!removedRoot) {
+        continue;
+      }
+
+      const index = session.workspaceRoots.indexOf(removedRoot);
+      if (index !== -1) {
+        session.workspaceRoots.splice(index, 1);
+      }
+    }
+
+    void sessionHelpers
+      .doRefreshWorkspaceIndex()
+      .then(sessionHelpers.validateOpenDocuments);
+  },
+);
 
 documents.onDidClose((e) => {
   session.documentSettings.delete(e.document.uri);

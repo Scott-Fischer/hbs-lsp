@@ -52,18 +52,11 @@ export function initializeSession(
   const capabilities = params.capabilities;
   state.hasConfigurationCapability = !!capabilities.workspace?.configuration;
 
-  state.workspaceRoots.length = 0;
   const legacyRootUri = (params as { rootUri?: string }).rootUri;
-  const rootCandidates = [
+  updateWorkspaceRoots(state, [
     ...(params.workspaceFolders?.map((folder) => folder.uri) ?? []),
     ...(legacyRootUri ? [legacyRootUri] : []),
-  ];
-  for (const uri of rootCandidates) {
-    const rootPath = fileUriToPath(uri);
-    if (rootPath && !state.workspaceRoots.includes(rootPath)) {
-      state.workspaceRoots.push(rootPath);
-    }
-  }
+  ]);
 
   const init = (params.initializationOptions ?? {}) as Partial<ServerSettings>;
   state.globalSettings = normalizeSettings(
@@ -85,6 +78,20 @@ export function initializeSession(
   configureAnalysisLimits({
     maxFullAnalysisChars: state.globalSettings.maxFullAnalysisChars,
   });
+}
+
+export function updateWorkspaceRoots(
+  state: SessionState,
+  rootUris: string[],
+): void {
+  state.workspaceRoots.length = 0;
+
+  for (const uri of rootUris) {
+    const rootPath = fileUriToPath(uri);
+    if (rootPath && !state.workspaceRoots.includes(rootPath)) {
+      state.workspaceRoots.push(rootPath);
+    }
+  }
 }
 
 export function createSessionHelpers(

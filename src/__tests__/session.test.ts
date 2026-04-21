@@ -5,6 +5,7 @@ import {
   createSessionHelpers,
   createSessionState,
   initializeSession,
+  updateWorkspaceRoots,
 } from '../session.js';
 
 async function flushMicrotasks(): Promise<void> {
@@ -104,6 +105,25 @@ describe('initializeSession', () => {
     ]);
     expect(state.globalSettings.partials).toEqual([]);
     expect(state.globalSettings.partialRoots).toEqual([]);
+  });
+});
+
+describe('updateWorkspaceRoots', () => {
+  it('replaces roots with valid unique file paths', () => {
+    const state = createSessionState();
+    state.workspaceRoots.push('/tmp/original');
+
+    updateWorkspaceRoots(state, [
+      'file:///tmp/workspace-a',
+      'untitled:invalid',
+      'file:///tmp/workspace-b',
+      'file:///tmp/workspace-a',
+    ]);
+
+    expect(state.workspaceRoots).toEqual([
+      '/tmp/workspace-a',
+      '/tmp/workspace-b',
+    ]);
   });
 });
 
