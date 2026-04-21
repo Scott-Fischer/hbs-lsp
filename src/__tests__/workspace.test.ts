@@ -472,7 +472,7 @@ describe('extractHelpersFromFile', () => {
       `
       const engine = new ExpressHandlebars({
         helpers: {
-          formatDate(value) { return value; },
+          sampleHelper(value) { return value; },
           uppercase: (value) => value,
           lowercase,
         },
@@ -481,7 +481,7 @@ describe('extractHelpersFromFile', () => {
     );
     const helpers = await extractHelpersFromFile(filePath);
     expect(helpers).toEqual(
-      expect.arrayContaining(['formatDate', 'uppercase', 'lowercase']),
+      expect.arrayContaining(['sampleHelper', 'uppercase', 'lowercase']),
     );
   });
 
@@ -490,7 +490,7 @@ describe('extractHelpersFromFile', () => {
       'express-variable.ts',
       `
       const helpers = {
-        formatDate,
+        sampleHelper,
         uppercase: (value) => value,
         lowercase(value) { return value; },
       };
@@ -503,7 +503,7 @@ describe('extractHelpersFromFile', () => {
     );
     const helpers = await extractHelpersFromFile(filePath);
     expect(helpers).toEqual(
-      expect.arrayContaining(['formatDate', 'uppercase', 'lowercase']),
+      expect.arrayContaining(['sampleHelper', 'uppercase', 'lowercase']),
     );
   });
 
@@ -512,7 +512,7 @@ describe('extractHelpersFromFile', () => {
       'helpers-export.ts',
       `
       export const helpers = {
-        formatDate,
+        sampleHelper,
         uppercase: (value) => value,
         lowercase(value) { return value; },
       };
@@ -520,7 +520,7 @@ describe('extractHelpersFromFile', () => {
     );
     const helpers = await extractHelpersFromFile(filePath);
     expect(helpers).toEqual(
-      expect.arrayContaining(['formatDate', 'uppercase', 'lowercase']),
+      expect.arrayContaining(['sampleHelper', 'uppercase', 'lowercase']),
     );
   });
 
@@ -529,7 +529,7 @@ describe('extractHelpersFromFile', () => {
       'helpers-default.ts',
       `
       const helpers = {
-        formatDate,
+        sampleHelper,
         uppercase: (value) => value,
       };
 
@@ -538,7 +538,7 @@ describe('extractHelpersFromFile', () => {
     );
     const helpers = await extractHelpersFromFile(filePath);
     expect(helpers).toEqual(
-      expect.arrayContaining(['formatDate', 'uppercase']),
+      expect.arrayContaining(['sampleHelper', 'uppercase']),
     );
   });
 
@@ -547,7 +547,7 @@ describe('extractHelpersFromFile', () => {
       'helpers-commonjs.js',
       `
       module.exports = {
-        formatDate(value) { return value; },
+        sampleHelper(value) { return value; },
         uppercase: (value) => value,
         lowercase,
       };
@@ -555,7 +555,7 @@ describe('extractHelpersFromFile', () => {
     );
     const helpers = await extractHelpersFromFile(filePath);
     expect(helpers).toEqual(
-      expect.arrayContaining(['formatDate', 'uppercase', 'lowercase']),
+      expect.arrayContaining(['sampleHelper', 'uppercase', 'lowercase']),
     );
   });
 
@@ -564,7 +564,7 @@ describe('extractHelpersFromFile', () => {
       'helpers-commonjs-variable.js',
       `
       const helpers = {
-        formatDate,
+        sampleHelper,
         uppercase: (value) => value,
       };
 
@@ -573,7 +573,7 @@ describe('extractHelpersFromFile', () => {
     );
     const helpers = await extractHelpersFromFile(filePath);
     expect(helpers).toEqual(
-      expect.arrayContaining(['formatDate', 'uppercase']),
+      expect.arrayContaining(['sampleHelper', 'uppercase']),
     );
   });
 
@@ -582,7 +582,7 @@ describe('extractHelpersFromFile', () => {
       'helpers-spread-local.js',
       `
       const extraHelpers = {
-        formatDate,
+        sampleHelper,
         uppercase: (value) => value,
       };
 
@@ -594,7 +594,7 @@ describe('extractHelpersFromFile', () => {
     );
     const helpers = await extractHelpersFromFile(filePath);
     expect(helpers).toEqual(
-      expect.arrayContaining(['headline', 'formatDate', 'uppercase']),
+      expect.arrayContaining(['headline', 'sampleHelper', 'uppercase']),
     );
   });
 
@@ -603,7 +603,7 @@ describe('extractHelpersFromFile', () => {
       'shared-helpers.js',
       `
       module.exports = {
-        formatDate,
+        sampleHelper,
         uppercase: (value) => value,
       };
       `,
@@ -621,7 +621,7 @@ describe('extractHelpersFromFile', () => {
     );
     const helpers = await extractHelpersFromFile(filePath);
     expect(helpers).toEqual(
-      expect.arrayContaining(['headline', 'formatDate', 'uppercase']),
+      expect.arrayContaining(['headline', 'sampleHelper', 'uppercase']),
     );
   });
 
@@ -629,7 +629,7 @@ describe('extractHelpersFromFile', () => {
     const filePath = await writeTmpFile(
       'helpers-spread-factory.js',
       `
-      const buildHelpers = () => ['formatDate', 'uppercase', 'headline'];
+      const buildHelpers = () => ['sampleHelper', 'uppercase', 'headline'];
 
       module.exports = {
         feature,
@@ -641,7 +641,7 @@ describe('extractHelpersFromFile', () => {
     expect(helpers).toEqual(
       expect.arrayContaining([
         'feature',
-        'formatDate',
+        'sampleHelper',
         'uppercase',
         'headline',
       ]),
@@ -653,7 +653,7 @@ describe('extractHelpersFromFile', () => {
       'aliased-helpers.js',
       `
       module.exports = {
-        formatDate,
+        sampleHelper,
         uppercase: (value) => value,
       };
       `,
@@ -670,7 +670,7 @@ describe('extractHelpersFromFile', () => {
     );
     const helpers = await extractHelpersFromFile(filePath);
     expect(helpers).toEqual(
-      expect.arrayContaining(['formatDate', 'uppercase']),
+      expect.arrayContaining(['sampleHelper', 'uppercase']),
     );
   });
 
@@ -679,18 +679,20 @@ describe('extractHelpersFromFile', () => {
       'helpers-dedupe.js',
       `
       const sharedHelpers = {
-        formatDate,
+        sampleHelper,
         uppercase,
       };
 
       module.exports = {
-        formatDate,
+        sampleHelper,
         ...sharedHelpers,
       };
       `,
     );
     const helpers = await extractHelpersFromFile(filePath);
-    expect(helpers.filter((helper) => helper === 'formatDate')).toHaveLength(1);
+    expect(helpers.filter((helper) => helper === 'sampleHelper')).toHaveLength(
+      1,
+    );
   });
 
   it('ignores unrelated helpers objects that are not exported or wired to ExpressHandlebars', async () => {
@@ -698,7 +700,7 @@ describe('extractHelpersFromFile', () => {
       'helpers-unrelated.js',
       `
       const helpers = {
-        formatDate,
+        sampleHelper,
         uppercase,
       };
 
@@ -709,7 +711,7 @@ describe('extractHelpersFromFile', () => {
     const helpers = await extractHelpersFromFile(filePath);
     expect(helpers).toEqual(expect.arrayContaining(['headline']));
     expect(helpers).not.toEqual(
-      expect.arrayContaining(['formatDate', 'uppercase']),
+      expect.arrayContaining(['sampleHelper', 'uppercase']),
     );
   });
 
@@ -774,12 +776,14 @@ describe('extractHelpersFromFile', () => {
             },
           },
         },
-        formatDate,
+        sampleHelper,
       };
       `,
     );
     const helpers = await extractHelpersFromFile(filePath);
-    expect(helpers).toEqual(expect.arrayContaining(['section', 'formatDate']));
+    expect(helpers).toEqual(
+      expect.arrayContaining(['section', 'sampleHelper']),
+    );
     expect(helpers).not.toEqual(
       expect.arrayContaining(['config', 'enabled', 'thresholds', 'min', 'max']),
     );
@@ -791,12 +795,12 @@ describe('extractHelpersFromFile', () => {
       `
       module.exports = {
         note: '}',
-        formatDate,
+        sampleHelper,
       };
       `,
     );
     const helpers = await extractHelpersFromFile(filePath);
-    expect(helpers).toEqual(expect.arrayContaining(['note', 'formatDate']));
+    expect(helpers).toEqual(expect.arrayContaining(['note', 'sampleHelper']));
   });
 
   it('does not extract fake helper names from commented spreads', async () => {

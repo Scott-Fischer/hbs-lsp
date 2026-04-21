@@ -134,7 +134,7 @@ describe('createSessionHelpers', () => {
     state.globalSettings = {
       ...state.globalSettings,
       maxFullAnalysisChars: 1234,
-      helpers: [...state.globalSettings.helpers, 'formatDate'],
+      helpers: [...state.globalSettings.helpers, 'sampleHelper'],
       partials: ['card'],
       partialRoots: ['./partials'],
     };
@@ -178,7 +178,7 @@ describe('createSessionHelpers', () => {
       'let',
       'log',
       'lookup',
-      'formatDate',
+      'sampleHelper',
     ]);
     expect(first.partials).toEqual(['card']);
     expect(first.partialRoots).toEqual(['./partials']);
@@ -192,7 +192,7 @@ describe('createSessionHelpers', () => {
     state.globalSettings = {
       ...state.globalSettings,
       indentSize: 5,
-      helpers: ['formatDate'],
+      helpers: ['sampleHelper'],
     };
 
     const helpers = createSessionHelpers(
@@ -220,7 +220,7 @@ describe('createSessionHelpers', () => {
       'let',
       'log',
       'lookup',
-      'formatDate',
+      'sampleHelper',
     ]);
   });
 

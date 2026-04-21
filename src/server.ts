@@ -119,6 +119,33 @@ connection.onInitialized(() => {
       DidChangeConfigurationNotification.type,
       undefined,
     );
+
+    connection.workspace.onDidChangeWorkspaceFolders(
+      (event: WorkspaceFoldersChangeEvent) => {
+        for (const folder of event.added) {
+          const addedRoot = fileUriToPath(folder.uri);
+          if (addedRoot && !session.workspaceRoots.includes(addedRoot)) {
+            session.workspaceRoots.push(addedRoot);
+          }
+        }
+
+        for (const folder of event.removed) {
+          const removedRoot = fileUriToPath(folder.uri);
+          if (!removedRoot) {
+            continue;
+          }
+
+          const index = session.workspaceRoots.indexOf(removedRoot);
+          if (index !== -1) {
+            session.workspaceRoots.splice(index, 1);
+          }
+        }
+
+        void sessionHelpers
+          .doRefreshWorkspaceIndex()
+          .then(sessionHelpers.validateOpenDocuments);
+      },
+    );
   }
 
   void sessionHelpers.doRefreshWorkspaceIndex();
@@ -138,33 +165,6 @@ connection.onDidChangeConfiguration((change) => {
     .doRefreshWorkspaceIndex()
     .then(sessionHelpers.validateOpenDocuments);
 });
-
-connection.workspace.onDidChangeWorkspaceFolders(
-  (event: WorkspaceFoldersChangeEvent) => {
-    for (const folder of event.added) {
-      const addedRoot = fileUriToPath(folder.uri);
-      if (addedRoot && !session.workspaceRoots.includes(addedRoot)) {
-        session.workspaceRoots.push(addedRoot);
-      }
-    }
-
-    for (const folder of event.removed) {
-      const removedRoot = fileUriToPath(folder.uri);
-      if (!removedRoot) {
-        continue;
-      }
-
-      const index = session.workspaceRoots.indexOf(removedRoot);
-      if (index !== -1) {
-        session.workspaceRoots.splice(index, 1);
-      }
-    }
-
-    void sessionHelpers
-      .doRefreshWorkspaceIndex()
-      .then(sessionHelpers.validateOpenDocuments);
-  },
-);
 
 documents.onDidClose((e) => {
   session.documentSettings.delete(e.document.uri);

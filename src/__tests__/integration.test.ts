@@ -571,14 +571,14 @@ describe('LSP Integration', () => {
     await mkdir(path.dirname(helperPath), { recursive: true });
     await writeFile(
       helperPath,
-      'export const formatDate = helper(function formatDate() {});\n',
+      'export const sampleHelper = helper(function sampleHelper() {});\n',
       'utf8',
     );
 
     await connection.sendRequest('handlebars/reindex');
 
     const uri = 'file:///tmp/hbs-lsp-test/definition-helper.hbs';
-    openDocument(connection, uri, '{{formatDate createdAt}}');
+    openDocument(connection, uri, '{{sampleHelper createdAt}}');
     await new Promise((r) => setTimeout(r, 100));
 
     const result = await connection.sendRequest<Definition | null>(
@@ -607,7 +607,7 @@ describe('LSP Integration', () => {
       helperModulePath,
       `
       module.exports = {
-        formatDate(value) { return value; },
+        sampleHelper(value) { return value; },
       };
       `,
       'utf8',
@@ -628,7 +628,7 @@ describe('LSP Integration', () => {
     await connection.sendRequest('handlebars/reindex');
 
     const uri = 'file:///tmp/hbs-lsp-test/definition-helper-bag.hbs';
-    openDocument(connection, uri, '{{formatDate createdAt}}');
+    openDocument(connection, uri, '{{sampleHelper createdAt}}');
     await new Promise((r) => setTimeout(r, 100));
 
     const result = await connection.sendRequest<Definition | null>(
@@ -662,7 +662,7 @@ describe('LSP Integration', () => {
       sharedPath,
       `
       module.exports = {
-        formatDate(value) { return value; },
+        sampleHelper(value) { return value; },
       };
       `,
       'utf8',
@@ -695,7 +695,7 @@ describe('LSP Integration', () => {
     await connection.sendRequest('handlebars/reindex');
 
     const uri = 'file:///tmp/hbs-lsp-test/definition-helper-spread.hbs';
-    openDocument(connection, uri, '{{formatDate createdAt}}');
+    openDocument(connection, uri, '{{sampleHelper createdAt}}');
     await new Promise((r) => setTimeout(r, 100));
 
     const result = await connection.sendRequest<Definition | null>(
@@ -723,7 +723,7 @@ describe('LSP Integration', () => {
       helperPath,
       `
       module.exports = {
-        formatDate(value) { return value; },
+        sampleHelper(value) { return value; },
       };
       `,
       'utf8',
@@ -732,7 +732,11 @@ describe('LSP Integration', () => {
     await connection.sendRequest('handlebars/reindex');
 
     const uri = 'file:///tmp/hbs-lsp-test/definition-block-helper.hbs';
-    openDocument(connection, uri, '{{#formatDate createdAt}}x{{/formatDate}}');
+    openDocument(
+      connection,
+      uri,
+      '{{#sampleHelper createdAt}}x{{/sampleHelper}}',
+    );
     await new Promise((r) => setTimeout(r, 100));
 
     const result = await connection.sendRequest<Definition | null>(
