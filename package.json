@@ -1,6 +1,6 @@
 {
   "name": "hbs-lsp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A standalone Language Server Protocol server for Handlebars templates in non-Ember apps.",
   "type": "module",
   "main": "dist/server.js",

@@ -2,6 +2,20 @@
 
 All notable changes to hbs-lsp will be documented in this file.
 
+## 0.2.0 — 2026-04-30
+
+### Features
+
+- **Go-to-definition for helpers** — jump to the source declaration of custom helpers registered via `registerHelper()`, `helper()`, or `export const … = helper(` patterns in JS/TS files
+- **Go-to-definition for partial blocks** — go-to-definition now works for `{{> partial}}` and `{{#> partialBlock}}` references
+
+### Bug fixes
+
+- **Workspace indexing** — avoid treating nested object properties as helpers; ignore string braces when scanning helper objects; resolve named helper imports; honor gitignore negation within ignored directories; ignore `partialsDir` matches inside comments and strings
+- **Session** — preserve global settings when resolving per-document config; track workspace folder change capability separately; refresh workspace roots when folders change
+- **Completions** — suppress suggestions when the cursor is outside a Handlebars expression; prefer inline partials over helpers on name collisions
+- **Hover** — prefer inline partials over helper name collisions
+
 ## 0.1.0 — 2026-04-10
 
 Initial release.
